@@ -1,0 +1,89 @@
+{
+  "stocks": {
+    "s1": {
+      "id": "s1",
+      "name": "Tata Consultancy Services Limited",
+      "ltp": 3063.2,
+      "change": -10.0,
+      "percent": -0.33,
+      "index": "NSE",
+      "holding": 0
+    },
+    "s2": {
+      "id": "s2",
+      "name": "Reliance Industries Limited",
+      "ltp": 1451.6,
+      "change": 3.2,
+      "percent": 0.22,
+      "index": "NSE",
+      "holding": 0
+    },
+    "s3": {
+      "id": "s3",
+      "name": "HDFC Bank Limited",
+      "ltp": 994.75,
+      "change": -14.05,
+      "percent": -1.39,
+      "index": "NSE",
+      "holding": 0
+    },
+    "s4": {
+      "id": "s4",
+      "name": "Infosys Limited",
+      "ltp": 1525.4,
+      "change": -3.1,
+      "percent": -0.2,
+      "index": "NSE",
+      "holding": 0
+    },
+    "s5": {
+      "id": "s5",
+      "name": "Wipro Limited",
+      "ltp": 242.98,
+      "change": -1.32,
+      "percent": -0.54,
+      "index": "NSE",
+      "holding": 0
+    },
+    "s6": {
+      "id": "s6",
+      "name": "Tech Mahindra Limited",
+      "ltp": 1453.7,
+      "change": -9.7,
+      "percent": -0.66,
+      "index": "NSE",
+      "holding": 0
+    },
+    "s7": {
+      "id": "s7",
+      "name": "ICICI Bank Limited",
+      "ltp": 1377.7,
+      "change": 14.0,
+      "percent": 1.03,
+      "index": "NSE",
+      "holding": 0
+    }
+  },
+  "indices": [
+    {
+      "name": "NIFTY 50",
+      "price": 25795.15,
+      "change": -139.95,
+      "percent": -0.54
+    },
+    {
+      "name": "NIFTY BANK",
+      "price": 57699.6,
+      "change": -473.15,
+      "percent": -0.81
+    },
+    {
+      "name": "SENSEX",
+      "price": 84211.88,
+      "change": -455.34,
+      "percent": -0.54
+    }
+  ],
+  "lastUpdated": "2025-10-26T12:01:00.488881",
+  "timestamp": "2025-10-26 12:01:00"
+}
