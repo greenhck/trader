@@ -1,0 +1,1248 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mobile Trading UI</title>
+    <!-- Load Tailwind CSS -->
+    <link rel="stylesheet" href="tailwind.min.css">
+    <!-- Load Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { 
+            getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, 
+            setPersistence, browserLocalPersistence, 
+            createUserWithEmailAndPassword, signInWithEmailAndPassword 
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { 
+            getFirestore, doc, updateDoc, setDoc, collection, addDoc, 
+            onSnapshot, query, where, writeBatch 
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        // --- Global Variables (Provided by Canvas) ---
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const INITIAL_AUTH_TOKEN = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+        // --- Firebase Initialization and Auth Setup ---
+        window.initializeApp = initializeApp;
+        window.getAuth = getAuth;
+        window.getFirestore = getFirestore;
+        window.doc = doc;
+        window.updateDoc = updateDoc;
+        window.setDoc = setDoc;
+        window.collection = collection;
+        window.addDoc = addDoc;
+        window.onSnapshot = onSnapshot;
+        window.query = query;
+        window.where = where;
+        window.writeBatch = writeBatch;
+        window.setPersistence = setPersistence;
+        window.browserLocalPersistence = browserLocalPersistence;
+        window.onAuthStateChanged = onAuthStateChanged;
+        window.signInWithCustomToken = signInWithCustomToken;
+        window.signInAnonymously = signInAnonymously;
+        window.createUserWithEmailAndPassword = createUserWithEmailAndPassword;
+        window.signInWithEmailAndPassword = signInWithEmailAndPassword;
+
+        // Initialize App on load
+        window.onload = initializeAppAndAuth;
+    </script>
+    <!-- Load Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" />
+    <style>
+        /* Custom styles to ensure edge-to-edge fit and smooth transitions */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7f7f7;
+            margin: 0;
+            padding: 0;
+            overscroll-behavior: contain;
+        }
+        #app-container {
+            max-width: 500px;
+            margin: 0 auto;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background-color: white;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.05);
+            position: relative;
+        }
+        /* Watchlist Header Animation (Hidden when scrolling down) */
+        #watchlist-header {
+            transition: transform 0.3s ease-in-out;
+            will-change: transform;
+            z-index: 20;
+            position: sticky;
+            top: 0;
+        }
+
+        /* --- Search Fullscreen Window (FADE-IN EFFECT) --- */
+        #search-screen {
+            position: fixed;
+            inset: 0;
+            background-color: white;
+            z-index: 70;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease-out;
+            max-width: 500px;
+            margin: 0 auto;
+            overflow-y: auto;
+        }
+        .search-open {
+            opacity: 1 !important;
+            pointer-events: auto !important;
+        }
+
+        /* --- GTT Fullscreen Order Window (SIDE-SLIDE EFFECT) --- */
+        .fullscreen-slide {
+            position: fixed;
+            inset: 0;
+            background-color: white;
+            z-index: 70;
+            transform: translateX(100%);
+            transition: transform 0.3s ease-out;
+            max-width: 500px;
+            margin: 0 auto;
+            overflow-y: auto;
+        }
+        .slide-open-side { /* Used only for GTT screen */
+            transform: translateX(0%);
+        }
+
+        /* Bottom Sheet (Stock Details Popup) Animation */
+        #stock-detail-sheet {
+            transform: translateY(100%);
+            transition: transform 0.3s ease-out;
+            z-index: 60;
+        }
+        .sheet-open {
+            transform: translateY(0%);
+        }
+
+        /* Index Popup Animation */
+        #index-popup {
+            transform: translateY(-100%);
+            transition: transform 0.3s ease-out;
+            z-index: 40;
+        }
+        .index-open {
+            transform: translateY(0%);
+        }
+
+        /* Global Modal Overlay (Black effect for sheet and popups) */
+        #modal-overlay {
+            z-index: 30; /* Keeping original z-index for overlay, used by bottom sheet */
+            transition: opacity 0.3s ease;
+        }
+        /* Ensure specific popups are above the sheet, but below fullscreen modals */
+        #notes-popup, #alert-popup, #remove-stock-popup {
+            z-index: 80;
+        }
+        /* Custom scrollbar for horizontal tabs */
+        #watchlist-tabs::-webkit-scrollbar {
+            display: none;
+        }
+        #watchlist-tabs {
+            -ms-overflow-style: none; /* IE and Edge */
+            scrollbar-width: none; /* Firefox */
+        }
+        /* Custom swipe animation container */
+        #stock-list-container {
+            overflow-x: scroll;
+            scroll-behavior: smooth; /* Crucial for smooth tab switching */
+            width: 100%;
+        }
+        .watchlist-page {
+            flex-shrink: 0;
+            width: 100%;
+            padding-bottom: 80px; /* Space for the bottom nav */
+        }
+        /* Ensure Auth screen has highest Z-index for fullscreen takeover */
+        #auth-screen {
+             z-index: 90;
+        }
+        /* Global focus/outline removal */
+        button:focus, input:focus, textarea:focus, select:focus {
+            outline: none !important;
+            box-shadow: none !important;
+        }
+        /* Global no hover (active state is allowed) */
+        button:hover, div.cursor-pointer:hover {
+            opacity: 1 !important;
+            filter: none !important;
+        }
+    </style>
+</head>
+<body class="selection:bg-gray-200">
+
+<!-- The main mobile container -->
+<div id="app-container" class="h-screen overflow-hidden">
+
+    <!-- Authentication Screen (Highest Priority) -->
+    <div id="auth-screen" class="fixed inset-0 bg-white z-90 flex flex-col justify-center items-center p-8 transition-opacity duration-300">
+        <h1 class="text-3xl font-bold text-blue-600 mb-6">Trade Mobile</h1>
+        <p id="auth-status" class="text-red-500 mb-4 text-sm"></p>
+        <input id="auth-email" type="email" placeholder="Email" class="w-full mb-3 p-3 border border-gray-300 rounded-lg text-black focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:outline-none">
+        <input id="auth-password" type="password" placeholder="Password" class="w-full mb-6 p-3 border border-gray-300 rounded-lg text-black focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:outline-none">
+        <button id="auth-primary-btn" onclick="handleAuthAction('login')" class="w-full py-3 bg-blue-600 text-white font-semibold rounded-lg text-lg active:bg-blue-700 transition-colors">
+            Login
+        </button>
+        <button onclick="toggleAuthMode()" class="mt-4 text-sm text-blue-600">
+            Switch to Create Account
+        </button>
+    </div>
+
+    <!-- Overlay for Popups/Bottom Sheet -->
+    <div id="modal-overlay" class="fixed inset-0 bg-black/50 opacity-0 pointer-events-none transition-opacity" onclick="closeAllModals()"></div>
+
+    <!-- Watchlist Index Popup (Half-screen) -->
+    <div id="index-popup" class="fixed top-0 left-0 w-full h-1/2 bg-white shadow-xl max-w-[500px] mx-auto overflow-hidden">
+        <div class="p-4 border-b border-gray-100 flex justify-between items-center">
+            <h2 class="text-lg font-semibold text-black">Market Indices</h2>
+            <i id="index-close-icon" onclick="toggleIndexPopup()" class="fa-solid fa-chevron-down text-lg text-black cursor-pointer p-2 transition-transform duration-300"></i>
+        </div>
+        <div id="index-list" class="p-4 space-y-3 overflow-y-auto h-full pb-16">
+            <!-- Index items will be rendered here -->
+        </div>
+    </div>
+
+    <!-- Search Fullscreen Window (Fade-in) -->
+    <div id="search-screen" class="fixed inset-0 bg-white opacity-0 pointer-events-none transition-opacity duration-300 max-w-[500px] mx-auto overflow-y-auto">
+        <!-- Search content will be rendered here when opened -->
+    </div>
+
+    <!-- GTT Fullscreen Order Window (Slide-in) -->
+    <div id="gtt-screen" class="fullscreen-slide p-4">
+        <!-- GTT content will be rendered here when opened -->
+    </div>
+
+    <!-- Main Content Area -->
+    <div id="main-content" class="flex-grow overflow-y-auto relative p-0">
+        <!-- Watchlist Header (Sticky and Animating) -->
+        <div id="watchlist-header" class="bg-white pt-4 px-4 pb-0 border-b border-gray-100">
+            <div class="flex justify-between items-center mb-4">
+                <div class="flex items-center space-x-2">
+                    <h1 class="text-xl font-bold text-black">Watchlist</h1>
+                    <i id="index-toggle-icon" onclick="toggleIndexPopup()" class="fa-solid fa-chevron-down text-sm text-gray-500 cursor-pointer transition-transform duration-300"></i>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <i id="notification-icon" class="fa-solid fa-bell text-lg text-gray-700 cursor-pointer relative" onclick="openNotificationPopup()">
+                        <span id="alert-dot" class="absolute top-0 right-0 h-2 w-2 rounded-full bg-red-500 hidden"></span>
+                    </i>
+                    <i onclick="openSearch()" class="fa-solid fa-magnifying-glass text-lg text-gray-700 cursor-pointer"></i>
+                </div>
+            </div>
+            <!-- Notification Popup (Arrow indicator) -->
+            <div id="notification-popup" class="absolute right-4 top-14 mt-2 w-64 bg-white border border-gray-200 rounded-lg shadow-xl p-3 transform scale-0 origin-top-right transition-transform duration-200">
+                <div class="absolute -top-2 right-3 w-0 h-0 border-l-8 border-l-transparent border-r-8 border-r-transparent border-b-8 border-b-white shadow-md"></div>
+                <p id="alert-message" class="text-sm text-black">No active alerts.</p>
+            </div>
+
+            <!-- Watchlist Tabs (Horizontal Scroll) -->
+            <div id="watchlist-tabs" class="flex overflow-x-scroll whitespace-nowrap space-x-6 pb-2">
+                <!-- Tabs will be rendered here -->
+            </div>
+        </div>
+
+        <!-- Main Stock List Container (Swipable) -->
+        <div id="stock-list-container" class="flex w-full" style="scroll-snap-type: x mandatory;">
+            <!-- Watchlist pages will be rendered here -->
+        </div>
+    </div>
+
+    <!-- Stock Detail Bottom Sheet Popup -->
+    <div id="stock-detail-sheet" class="fixed bottom-0 left-0 w-full bg-white rounded-t-2xl shadow-2xl max-w-[500px] mx-auto overflow-hidden h-1/2 flex flex-col" 
+         ontouchstart="handleTouchStart(event)" ontouchmove="handleTouchMove(event)" ontouchend="handleTouchEnd(event)">
+        <div class="p-4 flex flex-col">
+            <div id="drag-handle" class="w-10 h-1 bg-gray-300 rounded-full mx-auto mb-3 cursor-grab"></div>
+            
+            <!-- Header Info -->
+            <div id="sheet-header-info" class="flex justify-between items-start mb-4">
+                <!-- Content will be injected here -->
+            </div>
+
+            <div class="w-full h-px bg-gray-200 mb-4"></div>
+
+            <!-- Action Buttons: Buy/Sell -->
+            <div class="flex space-x-3 mb-4">
+                <button id="btn-buy" class="flex-1 py-3 text-white font-semibold rounded-lg text-sm transition-all duration-150 bg-green-600 active:bg-green-700">
+                    BUY
+                </button>
+                <button id="btn-sell" class="flex-1 py-3 text-white font-semibold rounded-lg text-sm transition-all duration-150 bg-red-600 active:bg-red-700">
+                    SELL
+                </button>
+            </div>
+
+            <!-- Secondary Buttons -->
+            <div class="grid grid-cols-3 gap-3 text-center mb-4 text-sm text-gray-700 font-medium">
+                <button onclick="openAddNotePopup()" class="p-2 bg-gray-100 rounded-lg transition-colors active:bg-gray-200 focus:outline-none">
+                    <i class="fa-solid fa-pencil text-xs mr-1"></i> Add Note
+                </button>
+                <button onclick="openGTTOrder()" class="p-2 bg-gray-100 rounded-lg transition-colors active:bg-gray-200 focus:outline-none">
+                    <i class="fa-solid fa-cart-shopping text-xs mr-1"></i> Create GTT
+                </button>
+                <button onclick="openSetAlertPopup()" class="p-2 bg-gray-100 rounded-lg transition-colors active:bg-gray-200 focus:outline-none">
+                    <i class="fa-solid fa-bell text-xs mr-1"></i> Set Alert
+                </button>
+            </div>
+            
+            <div class="w-full h-px bg-gray-200 mb-4"></div>
+
+            <!-- Notes Section -->
+            <div id="notes-list" class="overflow-y-auto space-y-2 h-20">
+                <h3 class="text-sm font-semibold text-black mb-1">Notes:</h3>
+                <!-- Notes will be injected here -->
+                <p id="no-notes" class="text-xs text-gray-500 italic">No notes added for this stock.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 1. Remove Stock Confirmation Popup (Long Press / Right Click) -->
+    <div id="remove-stock-popup" class="fixed inset-0 bg-black/50 opacity-0 pointer-events-none transition-opacity z-80 flex items-center justify-center">
+        <div class="bg-white rounded-lg p-6 w-11/12 max-w-sm transform scale-90 transition-transform duration-200">
+            <h2 class="text-lg font-semibold text-black mb-4">Remove Stock?</h2>
+            <p class="text-sm text-gray-600 mb-6">
+                Are you sure you want to remove <span id="remove-stock-name" class="font-medium text-blue-600"></span> 
+                from watchlist <span id="remove-watchlist-name" class="font-medium text-blue-600"></span>?
+            </p>
+            <div class="flex justify-end space-x-3">
+                <button onclick="closeRemoveStockPopup()" class="py-2 px-4 text-sm text-gray-700 bg-gray-100 rounded-lg focus:outline-none">
+                    Cancel
+                </button>
+                <button id="confirm-remove-btn" class="py-2 px-4 text-sm text-white bg-red-600 rounded-lg active:bg-red-700 focus:outline-none">
+                    Remove
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 2. Add Notes Popup -->
+    <div id="notes-popup" class="fixed inset-0 bg-black/50 opacity-0 pointer-events-none transition-opacity z-80 flex items-center justify-center">
+        <div class="bg-white rounded-lg p-6 w-11/12 max-w-sm transform scale-90 transition-transform duration-200">
+            <h2 class="text-lg font-semibold text-black mb-4">Add Note for <span id="note-stock-name" class="text-blue-600"></span></h2>
+            <textarea id="note-content" placeholder="Type your observation or analysis here..." rows="4" 
+                      class="w-full mb-4 p-2 border border-gray-300 rounded-lg text-black resize-none focus:outline-none"></textarea>
+            <div class="flex justify-end space-x-3">
+                <button onclick="closeAddNotePopup()" class="py-2 px-4 text-sm text-gray-700 bg-gray-100 rounded-lg focus:outline-none">
+                    Cancel
+                </button>
+                <button onclick="saveNote()" class="py-2 px-4 text-sm text-white bg-blue-600 rounded-lg active:bg-blue-700 focus:outline-none">
+                    Save Note
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. Set Alert Popup -->
+    <div id="alert-popup" class="fixed inset-0 bg-black/50 opacity-0 pointer-events-none transition-opacity z-80 flex items-center justify-center">
+        <div class="bg-white rounded-lg p-6 w-11/12 max-w-sm transform scale-90 transition-transform duration-200">
+            <h2 class="text-lg font-semibold text-black mb-4">Set Price Alert</h2>
+            <p class="text-sm text-gray-600 mb-3">Current Price: <span id="alert-current-price" class="font-semibold text-black"></span></p>
+            <input id="alert-price-input" type="number" step="0.05" placeholder="Enter Alert Price"
+                   class="w-full mb-4 p-2 border border-gray-300 rounded-lg text-black focus:outline-none">
+            <div class="flex justify-end space-x-3">
+                <button onclick="closeSetAlertPopup()" class="py-2 px-4 text-sm text-gray-700 bg-gray-100 rounded-lg focus:outline-none">
+                    Cancel
+                </button>
+                <button onclick="saveAlert()" class="py-2 px-4 text-sm text-white bg-blue-600 rounded-lg active:bg-blue-700 focus:outline-none">
+                    Set Alert
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bottom Navigation Bar (Placeholder) -->
+    <div class="fixed bottom-0 w-full max-w-[500px] mx-auto bg-white border-t border-gray-100 shadow-lg p-3 flex justify-around z-30">
+        <div class="text-center text-xs text-blue-600">
+            <i class="fa-solid fa-list-ul text-xl"></i>
+            <p>Watchlist</p>
+        </div>
+        <div class="text-center text-xs text-gray-500">
+            <i class="fa-solid fa-chart-line text-xl"></i>
+            <p>Markets</p>
+        </div>
+        <div class="text-center text-xs text-gray-500">
+            <i class="fa-solid fa-briefcase text-xl"></i>
+            <p>Portfolio</p>
+        </div>
+        <div class="text-center text-xs text-gray-500">
+            <i class="fa-solid fa-file-invoice-dollar text-xl"></i>
+            <p>Orders</p>
+        </div>
+        <div class="text-center text-xs text-gray-500">
+            <i class="fa-solid fa-user text-xl"></i>
+            <p>Account</p>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    // --- Global State Variables ---
+    let db, auth;
+    let userId = null;
+    let currentWatchlistId = 'w1';
+    let currentStock = null;
+    let pressTimer = null;
+    let longPressThreshold = 500; // ms
+    let touchStartY = 0;
+    let sheetOpen = false;
+    let authMode = 'login'; // 'login' or 'signup'
+    
+    // --- Data loaded from market_data.json (fetched via yfinance) ---
+    const MOCK_WATCHLISTS = {
+        'w1': { name: 'My Favourites', stocks: ['s1', 's2', 's3', 's4'] },
+        'w2': { name: 'IT Sector', stocks: ['s5', 's6'] },
+        'w3': { name: 'Holding', stocks: ['s7'] },
+    };
+
+    let MOCK_STOCKS = {};
+    let MOCK_INDICES = [];
+    
+    let userNotes = {}; // {stockId: [{id, text, timestamp}]}
+    let userAlerts = {}; // {stockId: {price: 0, setPrice: 0, setTime: Date}}
+    let userWatchlists = MOCK_WATCHLISTS;
+    let userStocks = MOCK_STOCKS;
+    let marketDataLoaded = false;
+
+    // --- Utility Functions ---
+
+    /** Closes all modally presented elements (sheet, popups, index). */
+    function closeAllModals() {
+        // Close bottom sheet
+        if (sheetOpen) closeStockDetailSheet();
+        
+        // Close index popup
+        const indexPopup = document.getElementById('index-popup');
+        const indexIcon = document.getElementById('index-toggle-icon');
+        indexPopup.classList.remove('index-open');
+        indexIcon.classList.remove('fa-xmark');
+        indexIcon.classList.add('fa-chevron-down');
+
+        // Close all other popups (notes, alert, remove)
+        document.querySelectorAll('#remove-stock-popup, #notes-popup, #alert-popup').forEach(popup => {
+            popup.classList.remove('opacity-100', 'pointer-events-auto');
+            popup.querySelector('div:nth-child(1)').classList.remove('scale-100');
+        });
+
+        // Hide main overlay
+        document.getElementById('modal-overlay').classList.remove('opacity-100', 'pointer-events-auto');
+    }
+
+    /** Load market data from JSON file */
+    async function loadMarketData() {
+        try {
+            const response = await fetch('market_data.json');
+            if (!response.ok) {
+                console.warn('Failed to load market_data.json, using empty data');
+                return;
+            }
+            
+            const data = await response.json();
+            
+            // Update stocks and indices from JSON
+            if (data.stocks) {
+                MOCK_STOCKS = data.stocks;
+                userStocks = {...MOCK_STOCKS};
+            }
+            
+            if (data.indices) {
+                MOCK_INDICES = data.indices;
+            }
+            
+            marketDataLoaded = true;
+            console.log('Market data loaded successfully:', data.timestamp || 'No timestamp');
+            
+            // Re-render if UI is already initialized
+            if (userId) {
+                renderWatchlistTabs();
+                renderWatchlist(currentWatchlistId);
+            }
+        } catch (error) {
+            console.error('Error loading market data:', error);
+        }
+    }
+
+    /** Firebase Authentication and Setup */
+    async function initializeAppAndAuth() {
+        // Load market data first
+        await loadMarketData();
+        try {
+            const app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+
+            await setPersistence(auth, browserLocalPersistence);
+
+            if (INITIAL_AUTH_TOKEN) {
+                 await signInWithCustomToken(auth, INITIAL_AUTH_TOKEN);
+            } else {
+                 await signInAnonymously(auth);
+            }
+
+            onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    userId = user.uid;
+                    document.getElementById('auth-screen').style.opacity = '0';
+                    document.getElementById('auth-screen').style.pointerEvents = 'none';
+                    // Load user data or initialize if new
+                    loadUserData();
+                    setupWatchlistScrollBehavior();
+                    // Initial rendering
+                    renderWatchlistTabs();
+                    renderWatchlist(currentWatchlistId);
+                } else {
+                    // Show login screen if not signed in (only happens if custom token failed or user signed out)
+                    userId = null;
+                    document.getElementById('auth-status').textContent = 'Please log in or create an account.';
+                    document.getElementById('auth-screen').style.opacity = '1';
+                    document.getElementById('auth-screen').style.pointerEvents = 'auto';
+                }
+            });
+
+        } catch (error) {
+            console.error("Firebase Init Error:", error);
+            document.getElementById('auth-status').textContent = `Initialization failed: ${error.message}`;
+        }
+    }
+
+    /** Load data from Firestore or use mocks */
+    function loadUserData() {
+        if (!userId) return;
+
+        // 1. Listen to Watchlists (Public Data for Simplicity/Sharing)
+        const watchlistsColRef = collection(db, `artifacts/${appId}/public/data/watchlists`);
+        onSnapshot(watchlistsColRef, (snapshot) => {
+            snapshot.docChanges().forEach(change => {
+                const data = change.doc.data();
+                if (change.type === "added" || change.type === "modified") {
+                    userWatchlists[change.doc.id] = data;
+                } else if (change.type === "removed") {
+                    delete userWatchlists[change.doc.id];
+                }
+            });
+            renderWatchlistTabs();
+            renderWatchlist(currentWatchlistId);
+        }, (error) => console.error("Error loading watchlists:", error));
+
+        // 2. Listen to Stocks
+        // NOTE: In a real app, stocks would be static. Here we use a minimal collection to map IDs.
+        const stocksColRef = collection(db, `artifacts/${appId}/public/data/stocks`);
+        onSnapshot(stocksColRef, (snapshot) => {
+            snapshot.docChanges().forEach(change => {
+                const data = change.doc.data();
+                if (change.type === "added" || change.type === "modified") {
+                    // Merging with mock data for realism
+                    userStocks[change.doc.id] = {...MOCK_STOCKS[change.doc.id], ...data};
+                } else if (change.type === "removed") {
+                    delete userStocks[change.doc.id];
+                }
+            });
+            renderWatchlist(currentWatchlistId);
+        }, (error) => console.error("Error loading stocks:", error));
+        
+        // 3. Listen to Notes (Private Data)
+        const notesColRef = collection(db, `artifacts/${appId}/users/${userId}/notes`);
+        onSnapshot(query(notesColRef), (snapshot) => {
+            let tempNotes = {};
+            snapshot.docs.forEach(doc => {
+                const note = doc.data();
+                if (!tempNotes[note.stockId]) tempNotes[note.stockId] = [];
+                tempNotes[note.stockId].push({...note, id: doc.id});
+            });
+            userNotes = tempNotes;
+            if (currentStock) renderNotesList(currentStock.id);
+        }, (error) => console.error("Error loading notes:", error));
+
+         // 4. Listen to Alerts (Private Data)
+        const alertsColRef = collection(db, `artifacts/${appId}/users/${userId}/alerts`);
+        onSnapshot(query(alertsColRef), (snapshot) => {
+            userAlerts = {};
+            snapshot.docs.forEach(doc => {
+                const alert = doc.data();
+                userAlerts[doc.id] = alert;
+            });
+            checkAlerts(); // Re-check alerts on load/change
+        }, (error) => console.error("Error loading alerts:", error));
+    }
+
+    // --- UI Rendering Functions ---
+
+    /** Renders the Watchlist tabs (horizontal scroll) */
+    function renderWatchlistTabs() {
+        const tabsContainer = document.getElementById('watchlist-tabs');
+        const tabKeys = Object.keys(userWatchlists);
+        
+        tabsContainer.innerHTML = tabKeys.map(id => {
+            const isActive = id === currentWatchlistId ? 'text-black border-blue-600' : 'text-gray-500 border-transparent';
+            return `
+                <button onclick="switchWatchlist('${id}')" 
+                        class="py-2 px-3 text-sm font-semibold border-b-2 ${isActive} transition-colors whitespace-nowrap focus:outline-none">
+                    ${userWatchlists[id].name}
+                </button>
+            `;
+        }).join('');
+
+        // Ensure the correct watchlist page is visible
+        const container = document.getElementById('stock-list-container');
+        const index = tabKeys.indexOf(currentWatchlistId);
+        if (container.children.length > index) {
+            container.scrollLeft = index * container.offsetWidth;
+        }
+    }
+
+    /** Renders the stock list for all watchlists, handling horizontal scrolling */
+    function renderWatchlist() {
+        const container = document.getElementById('stock-list-container');
+        const tabKeys = Object.keys(userWatchlists);
+        
+        const html = tabKeys.map(id => {
+            const watchlist = userWatchlists[id];
+            const stockItems = watchlist.stocks.map(stockId => {
+                const stock = userStocks[stockId];
+                if (!stock) return '';
+
+                const isPositive = stock.change >= 0;
+                const changeColor = isPositive ? 'text-green-600' : 'text-red-600';
+                const changeIcon = isPositive ? 'fa-caret-up' : 'fa-caret-down';
+                const ltpFormatted = stock.ltp.toFixed(2);
+                const holdingText = stock.holding ? `• ${stock.holding} Qty` : '';
+
+                return `
+                    <div class="px-4 py-3 flex justify-between items-center cursor-pointer active:bg-gray-50"
+                         onclick="handleStockClickWrapper(event, '${stock.id}')"
+                         oncontextmenu="event.preventDefault(); openRemoveStockPopup('${stock.id}', '${id}')"
+                         ontouchstart="handlePressStart('${stock.id}', '${id}')"
+                         ontouchend="handlePressEnd(event)"
+                         data-stock-id="${stock.id}">
+                        <!-- Left Aligned Info -->
+                        <div>
+                            <p class="text-sm font-semibold text-black">${stock.name}</p>
+                            <p class="text-xs text-gray-500 mt-0.5 uppercase">${stock.index} ${holdingText}</p>
+                        </div>
+                        <!-- Right Aligned Info -->
+                        <div class="text-right">
+                            <p class="text-sm font-semibold text-black">${ltpFormatted}</p>
+                            <p class="text-xs ${changeColor} mt-0.5">
+                                <i class="fa-solid ${changeIcon} mr-0.5"></i> ${Math.abs(stock.change).toFixed(2)} (${Math.abs(stock.percent).toFixed(2)}%)
+                            </p>
+                        </div>
+                    </div>
+                    <!-- Horizontal line REMOVED as per instruction -->
+                `;
+            }).join('');
+
+            return `<div id="watchlist-${id}" class="watchlist-page" style="scroll-snap-align: start;">${stockItems}</div>`;
+        }).join('');
+
+        container.innerHTML = html;
+        switchWatchlist(currentWatchlistId, false); // Re-align to current tab
+    }
+
+    /** Renders the Index Popup Content */
+    function renderIndicesPopup() {
+        const container = document.getElementById('index-list');
+        container.innerHTML = MOCK_INDICES.map(index => {
+            const isPositive = index.change >= 0;
+            const changeColor = isPositive ? 'text-green-600' : 'text-red-600';
+            const changeIcon = isPositive ? 'fa-caret-up' : 'fa-caret-down';
+
+            return `
+                <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg shadow-sm">
+                    <p class="text-base font-semibold text-black">${index.name}</p>
+                    <div class="text-right">
+                        <p class="text-base font-bold text-black">${index.price.toFixed(2)}</p>
+                        <p class="text-sm ${changeColor} mt-0.5">
+                            <i class="fa-solid ${changeIcon} mr-0.5"></i> ${Math.abs(index.change).toFixed(2)} (${Math.abs(index.percent).toFixed(2)}%)
+                        </p>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    /** Renders notes list in the stock detail sheet */
+    function renderNotesList(stockId) {
+        const notesContainer = document.getElementById('notes-list');
+        const notes = userNotes[stockId] || [];
+        
+        document.getElementById('no-notes').style.display = notes.length === 0 ? 'block' : 'none';
+
+        const notesHtml = notes.map(note => {
+            const date = new Date(note.timestamp).toLocaleDateString();
+            return `
+                <div class="text-xs p-2 border border-gray-100 rounded-lg bg-white shadow-sm">
+                    <p class="text-gray-700">${note.text}</p>
+                    <p class="text-gray-400 text-[10px] mt-1 text-right">Saved on ${date}</p>
+                </div>
+            `;
+        }).join('');
+
+        // Inject notes below the heading
+        notesContainer.querySelector('h3').insertAdjacentHTML('afterend', notesHtml);
+    }
+
+    // --- Action Handlers ---
+
+    /** Switches the active watchlist tab and scrolls the content */
+    function switchWatchlist(id, doScroll = true) {
+        currentWatchlistId = id;
+        renderWatchlistTabs();
+
+        if (doScroll) {
+            const container = document.getElementById('stock-list-container');
+            const tabKeys = Object.keys(userWatchlists);
+            const index = tabKeys.indexOf(id);
+            if (index !== -1) {
+                container.scrollLeft = index * container.offsetWidth;
+            }
+        }
+    }
+
+    /** Opens the Search Fullscreen Window */
+    function openSearch() {
+        document.getElementById('search-screen').classList.add('search-open');
+        // Placeholder for search content rendering
+        document.getElementById('search-screen').innerHTML = `
+            <div class="p-4 flex items-center border-b border-gray-100 sticky top-0 bg-white">
+                <i onclick="closeSearch()" class="fa-solid fa-arrow-left text-xl text-black cursor-pointer mr-4"></i>
+                <input type="text" placeholder="Search stocks, indices, futures..."
+                       class="flex-grow p-2 border-none rounded-lg text-lg focus:outline-none bg-gray-100">
+            </div>
+            <div class="p-4 text-gray-500">
+                <p>Start typing to search for stocks...</p>
+            </div>
+        `;
+    }
+
+    /** Closes the Search Fullscreen Window */
+    function closeSearch() {
+        document.getElementById('search-screen').classList.remove('search-open');
+    }
+
+    /** Toggles the Index Half-screen Popup (Up/Down) */
+    function toggleIndexPopup() {
+        const popup = document.getElementById('index-popup');
+        const icon = document.getElementById('index-toggle-icon');
+        const isClosed = !popup.classList.contains('index-open');
+        
+        if (isClosed) {
+            renderIndicesPopup();
+            popup.classList.add('index-open');
+            icon.classList.remove('fa-chevron-down');
+            icon.classList.add('fa-xmark');
+            document.getElementById('modal-overlay').classList.add('opacity-100', 'pointer-events-auto');
+        } else {
+            popup.classList.remove('index-open');
+            icon.classList.remove('fa-xmark');
+            icon.classList.add('fa-chevron-down');
+            document.getElementById('modal-overlay').classList.remove('opacity-100', 'pointer-events-auto');
+        }
+    }
+
+    /** Handles click on a stock item (prevents immediate click on long-press) */
+    function handleStockClickWrapper(event, stockId) {
+        // Prevent click if it was a long press that just ended
+        if (pressTimer === 'finished') {
+             pressTimer = null;
+             return;
+        }
+        openStockDetailSheet(stockId);
+    }
+
+    /** Opens the Stock Detail Bottom Sheet */
+    function openStockDetailSheet(stockId) {
+        currentStock = userStocks[stockId];
+        if (!currentStock) return;
+        
+        const sheet = document.getElementById('stock-detail-sheet');
+        const overlay = document.getElementById('modal-overlay');
+        const headerInfo = document.getElementById('sheet-header-info');
+
+        const isPositive = currentStock.change >= 0;
+        const changeColor = isPositive ? 'text-green-600' : 'text-red-600';
+        const changeIcon = isPositive ? 'fa-caret-up' : 'fa-caret-down';
+        const indexText = currentStock.index === 'INDICES' ? 'Indices' : currentStock.index;
+
+        headerInfo.innerHTML = `
+            <div>
+                <p class="text-xl font-bold text-black">${currentStock.name}</p>
+                <p class="text-sm text-gray-500 uppercase">${indexText}</p>
+            </div>
+            <div class="text-right">
+                <p class="text-xl font-bold text-black">${currentStock.ltp.toFixed(2)}</p>
+                <p class="text-sm ${changeColor} mt-0.5">
+                    <i class="fa-solid ${changeIcon} mr-0.5"></i> ${Math.abs(currentStock.change).toFixed(2)} (${Math.abs(currentStock.percent).toFixed(2)}%)
+                </p>
+            </div>
+        `;
+        
+        // Update Buy/Sell buttons to reflect current stock
+        document.getElementById('btn-buy').onclick = () => console.log('Buy clicked for', currentStock.name);
+        document.getElementById('btn-sell').onclick = () => console.log('Sell clicked for', currentStock.name);
+
+        renderNotesList(stockId);
+
+        sheet.classList.add('sheet-open');
+        overlay.classList.add('opacity-100', 'pointer-events-auto');
+        sheetOpen = true;
+    }
+
+    /** Closes the Stock Detail Bottom Sheet */
+    function closeStockDetailSheet() {
+        document.getElementById('stock-detail-sheet').classList.remove('sheet-open');
+        document.getElementById('modal-overlay').classList.remove('opacity-100', 'pointer-events-auto');
+        sheetOpen = false;
+        currentStock = null;
+    }
+
+    // --- Bottom Sheet Swipe Logic ---
+    function handleTouchStart(e) {
+        touchStartY = e.touches[0].clientY;
+    }
+
+    function handleTouchMove(e) {
+        if (!sheetOpen) return;
+        const currentY = e.touches[0].clientY;
+        const deltaY = currentY - touchStartY;
+
+        if (deltaY > 0) { // Swiping down
+            const sheet = document.getElementById('stock-detail-sheet');
+            sheet.style.transform = `translateY(${deltaY}px)`;
+        }
+    }
+
+    function handleTouchEnd(e) {
+        if (!sheetOpen) return;
+        const currentY = e.changedTouches[0].clientY;
+        const deltaY = currentY - touchStartY;
+        const sheetHeight = document.getElementById('stock-detail-sheet').offsetHeight;
+
+        // Reset style
+        document.getElementById('stock-detail-sheet').style.transform = '';
+
+        // Check for close condition (dragged down more than 10% of height)
+        if (deltaY > sheetHeight * 0.1) {
+            closeStockDetailSheet();
+        }
+    }
+
+
+    // --- Long Press / Right Click Logic for Remove Popup ---
+    let stockIdToRemove = null;
+    let watchlistIdToRemove = null;
+
+    /** Starts the timer for long press */
+    function handlePressStart(stockId, watchlistId) {
+        stockIdToRemove = stockId;
+        watchlistIdToRemove = watchlistId;
+        pressTimer = setTimeout(() => {
+            openRemoveStockPopup(stockId, watchlistId);
+            pressTimer = 'finished'; // Flag that long press occurred
+        }, longPressThreshold);
+    }
+
+    /** Clears the timer and prevents click if long press occurred */
+    function handlePressEnd(e) {
+        if (pressTimer !== 'finished') {
+            clearTimeout(pressTimer);
+            pressTimer = null;
+        } else if (e.type === 'touchend') {
+            // Prevent the subsequent 'click' event after a long press (touchend)
+            e.preventDefault(); 
+        }
+    }
+
+    /** Opens the Remove Stock Popup (used by right click and long press) */
+    function openRemoveStockPopup(stockId, watchlistId) {
+        stockIdToRemove = stockId;
+        watchlistIdToRemove = watchlistId;
+        const stockName = userStocks[stockId].name;
+        const watchlistName = userWatchlists[watchlistId].name;
+
+        document.getElementById('remove-stock-name').textContent = stockName;
+        document.getElementById('remove-watchlist-name').textContent = watchlistName;
+        
+        const popup = document.getElementById('remove-stock-popup');
+        popup.classList.add('opacity-100', 'pointer-events-auto');
+        popup.querySelector('div:nth-child(1)').classList.add('scale-100');
+        document.getElementById('modal-overlay').classList.add('opacity-100', 'pointer-events-auto');
+
+        document.getElementById('confirm-remove-btn').onclick = removeStockFromWatchlist;
+    }
+
+    /** Closes the Remove Stock Popup */
+    function closeRemoveStockPopup() {
+        document.getElementById('remove-stock-popup').classList.remove('opacity-100', 'pointer-events-auto');
+        document.getElementById('remove-stock-popup').querySelector('div:nth-child(1)').classList.remove('scale-100');
+        document.getElementById('modal-overlay').classList.remove('opacity-100', 'pointer-events-auto');
+    }
+
+    /** Removes the stock from the watchlist (Firebase/State update) */
+    async function removeStockFromWatchlist() {
+        if (!stockIdToRemove || !watchlistIdToRemove || !userId) {
+            console.error("Cannot remove stock: Missing IDs or user ID.");
+            closeRemoveStockPopup();
+            return;
+        }
+
+        try {
+            const watchlistRef = doc(db, `artifacts/${appId}/public/data/watchlists`, watchlistIdToRemove);
+            
+            const currentStocks = userWatchlists[watchlistIdToRemove].stocks;
+            const updatedStocks = currentStocks.filter(id => id !== stockIdToRemove);
+            
+            await updateDoc(watchlistRef, {
+                stocks: updatedStocks
+            });
+            
+            // UI will update via onSnapshot listener in loadUserData()
+            closeRemoveStockPopup();
+        } catch (error) {
+            console.error("Error removing stock:", error);
+            // Show a temporary error message in the UI instead of alert()
+        }
+    }
+
+    // --- Notes Popup Logic ---
+
+    function openAddNotePopup() {
+        if (!currentStock) return;
+        closeAllModals(); // Close sheet first, then open popup
+        
+        document.getElementById('note-stock-name').textContent = currentStock.name;
+        document.getElementById('note-content').value = '';
+        
+        const popup = document.getElementById('notes-popup');
+        popup.classList.add('opacity-100', 'pointer-events-auto');
+        popup.querySelector('div:nth-child(1)').classList.add('scale-100');
+    }
+
+    function closeAddNotePopup() {
+        document.getElementById('notes-popup').classList.remove('opacity-100', 'pointer-events-auto');
+        document.getElementById('notes-popup').querySelector('div:nth-child(1)').classList.remove('scale-100');
+        openStockDetailSheet(currentStock.id); // Re-open the sheet
+    }
+
+    async function saveNote() {
+        if (!currentStock || !userId) return;
+        const noteText = document.getElementById('note-content').value.trim();
+
+        if (noteText.length > 0) {
+            try {
+                const notesColRef = collection(db, `artifacts/${appId}/users/${userId}/notes`);
+                await addDoc(notesColRef, {
+                    stockId: currentStock.id,
+                    text: noteText,
+                    timestamp: Date.now()
+                });
+                closeAddNotePopup();
+            } catch (error) {
+                console.error("Error saving note:", error);
+            }
+        }
+    }
+
+    // --- Alert Popup Logic ---
+
+    function openSetAlertPopup() {
+        if (!currentStock) return;
+        closeAllModals(); // Close sheet first, then open popup
+
+        document.getElementById('alert-current-price').textContent = currentStock.ltp.toFixed(2);
+        document.getElementById('alert-price-input').value = '';
+
+        const existingAlert = userAlerts[currentStock.id];
+        if (existingAlert) {
+            document.getElementById('alert-price-input').value = existingAlert.price.toFixed(2);
+        }
+
+        const popup = document.getElementById('alert-popup');
+        popup.classList.add('opacity-100', 'pointer-events-auto');
+        popup.querySelector('div:nth-child(1)').classList.add('scale-100');
+    }
+
+    function closeSetAlertPopup() {
+        document.getElementById('alert-popup').classList.remove('opacity-100', 'pointer-events-auto');
+        document.getElementById('alert-popup').querySelector('div:nth-child(1)').classList.remove('scale-100');
+        openStockDetailSheet(currentStock.id); // Re-open the sheet
+    }
+
+    async function saveAlert() {
+        if (!currentStock || !userId) return;
+        const alertPrice = parseFloat(document.getElementById('alert-price-input').value);
+
+        if (!isNaN(alertPrice) && alertPrice > 0) {
+            try {
+                const alertRef = doc(db, `artifacts/${appId}/users/${userId}/alerts`, currentStock.id);
+                await setDoc(alertRef, {
+                    price: alertPrice,
+                    stockName: currentStock.name,
+                    stockId: currentStock.id,
+                    setPrice: currentStock.ltp, // Price when alert was set
+                    setTime: Date.now(),
+                    triggered: false
+                });
+                checkAlerts(); // Check immediately after setting
+                closeSetAlertPopup();
+            } catch (error) {
+                console.error("Error saving alert:", error);
+            }
+        }
+    }
+    
+    /** Checks alerts against current mock prices and updates notification icon */
+    function checkAlerts() {
+        let activeAlerts = 0;
+        let triggeredMessage = "";
+        const now = Date.now();
+
+        for (const stockId in userAlerts) {
+            const alert = userAlerts[stockId];
+            const stock = userStocks[stockId];
+            if (!stock) continue;
+
+            // Simple trigger logic: if current price crosses the alert price
+            const hasCrossed = (stock.ltp >= alert.price && stock.ltp > alert.setPrice) || 
+                               (stock.ltp <= alert.price && stock.ltp < alert.setPrice);
+            
+            if (hasCrossed && !alert.triggered) {
+                activeAlerts++;
+                const diff = stock.ltp - alert.setPrice;
+                const sign = diff >= 0 ? '+' : '';
+                
+                triggeredMessage += `Alert for ${stock.name}: Price moved from ${alert.setPrice.toFixed(2)} to ${stock.ltp.toFixed(2)} (${sign}${diff.toFixed(2)}).\n`;
+                
+                // Mark as triggered in Firestore (not implemented here, but required for persistent state)
+                // doc(db, alerts collection, stockId).update({triggered: true})
+            } else if (!alert.triggered) {
+                activeAlerts++; // Count as active even if not triggered yet
+            }
+        }
+
+        const alertDot = document.getElementById('alert-dot');
+        const alertMessage = document.getElementById('alert-message');
+
+        if (triggeredMessage) {
+            alertDot.classList.remove('hidden');
+            alertMessage.textContent = triggeredMessage.trim();
+        } else if (activeAlerts > 0) {
+            alertDot.classList.remove('hidden');
+            alertMessage.textContent = `${activeAlerts} active alert(s).`;
+        } else {
+            alertDot.classList.add('hidden');
+            alertMessage.textContent = "No active alerts.";
+        }
+    }
+    
+    /** Toggles the Notification Popup */
+    function openNotificationPopup() {
+        const popup = document.getElementById('notification-popup');
+        popup.classList.toggle('scale-0');
+        // Hide after 5 seconds if not closed manually (optional)
+        // setTimeout(() => popup.classList.add('scale-0'), 5000);
+    }
+
+    // --- GTT Order Logic ---
+
+    /** Opens the GTT Fullscreen Order Window */
+    function openGTTOrder() {
+        if (!currentStock) return;
+        closeAllModals(); // Close all other modals first
+
+        const screen = document.getElementById('gtt-screen');
+        screen.classList.add('slide-open-side');
+        
+        // Render the GTT form structure
+        renderGTTForm();
+    }
+    
+    /** Renders the GTT form content */
+    function renderGTTForm() {
+        if (!currentStock) return;
+        const screen = document.getElementById('gtt-screen');
+        
+        const isPositive = currentStock.change >= 0;
+        const changeColor = isPositive ? 'text-green-600' : 'text-red-600';
+        const changeIcon = isPositive ? 'fa-caret-up' : 'fa-caret-down';
+
+        screen.innerHTML = `
+            <div class="sticky top-0 bg-white border-b border-gray-100 py-3 px-4">
+                <div class="flex justify-between items-center mb-2">
+                    <i onclick="closeGTTOrder()" class="fa-solid fa-arrow-left text-xl text-black cursor-pointer"></i>
+                    <h2 class="text-lg font-semibold text-black flex-grow text-center">Create GTT</h2>
+                    <span class="text-xs font-bold text-gray-500 border border-gray-300 px-2 py-1 rounded-full">GTT</span>
+                </div>
+                <!-- Stock Info Bar -->
+                <div class="flex justify-between items-center text-sm pt-2">
+                    <div class="font-semibold text-black">${currentStock.name} <span class="text-xs text-gray-500 uppercase">(${currentStock.index})</span></div>
+                    <div class="text-right">
+                        <p class="font-bold text-black">${currentStock.ltp.toFixed(2)}</p>
+                        <p class="text-xs ${changeColor} mt-0.5">
+                            <i class="fa-solid ${changeIcon} mr-0.5"></i> ${Math.abs(currentStock.change).toFixed(2)} (${Math.abs(currentStock.percent).toFixed(2)}%)
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Form Body -->
+            <div class="p-4 space-y-6 overflow-y-auto">
+                
+                <!-- Order Type (Buy/Sell) -->
+                <div>
+                    <label class="text-sm font-semibold text-gray-700 block mb-2">Type</label>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="bg-green-100 text-green-700 py-3 text-center rounded-lg font-bold text-sm border-2 border-green-600 focus:outline-none cursor-pointer">BUY</div>
+                        <div class="bg-gray-100 text-gray-700 py-3 text-center rounded-lg font-bold text-sm focus:outline-none cursor-pointer">SELL</div>
+                    </div>
+                </div>
+                
+                <!-- Trigger Type (Single/OCO) -->
+                <div>
+                    <label class="text-sm font-semibold text-gray-700 block mb-2">Trigger Type</label>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="bg-blue-100 text-blue-700 py-3 text-center rounded-lg font-bold text-sm border-2 border-blue-600 focus:outline-none cursor-pointer">SINGLE</div>
+                        <div class="bg-gray-100 text-gray-700 py-3 text-center rounded-lg font-bold text-sm focus:outline-none cursor-pointer">OCO (Target + Stoploss)</div>
+                    </div>
+                </div>
+                
+                <!-- STOPLOSS Section -->
+                <div class="border p-4 rounded-lg bg-red-50">
+                    <h3 class="text-sm font-bold text-red-700 mb-3">STOPLOSS</h3>
+                    
+                    <!-- Trigger Price -->
+                    <div class="mb-3">
+                        <label class="text-xs font-medium text-gray-700 block mb-1">Trigger Price</label>
+                        <div class="flex items-center">
+                            <input type="number" step="0.05" placeholder="Enter trigger price" 
+                                   class="w-full p-2 border border-gray-300 rounded-l-lg text-black focus:outline-none">
+                            <span class="p-2 bg-gray-200 text-gray-700 text-sm rounded-r-lg font-medium select-none focus:outline-none">0.5% of LTP</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Order Details -->
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="text-xs font-medium text-gray-700 block mb-1">Quantity</label>
+                            <input type="number" placeholder="Qty" value="1" 
+                                   class="w-full p-2 border border-gray-300 rounded-lg text-black focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="text-xs font-medium text-gray-700 block mb-1">Limit Price</label>
+                            <input type="number" step="0.05" placeholder="Limit" 
+                                   class="w-full p-2 border border-gray-300 rounded-lg text-black focus:outline-none">
+                        </div>
+                    </div>
+                    
+                    <p class="text-[10px] text-gray-500 mt-2">Order Limit: CNC • Product: Auto</p>
+                </div>
+
+                <!-- TARGET Section (Same design as STOPLOSS) -->
+                <div class="border p-4 rounded-lg bg-green-50">
+                    <h3 class="text-sm font-bold text-green-700 mb-3">TARGET</h3>
+                    
+                    <!-- Trigger Price -->
+                    <div class="mb-3">
+                        <label class="text-xs font-medium text-gray-700 block mb-1">Trigger Price</label>
+                        <div class="flex items-center">
+                            <input type="number" step="0.05" placeholder="Enter trigger price" 
+                                   class="w-full p-2 border border-gray-300 rounded-l-lg text-black focus:outline-none">
+                            <span class="p-2 bg-gray-200 text-gray-700 text-sm rounded-r-lg font-medium select-none focus:outline-none">1.5% of LTP</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Order Details -->
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="text-xs font-medium text-gray-700 block mb-1">Quantity</label>
+                            <input type="number" placeholder="Qty" value="1" 
+                                   class="w-full p-2 border border-gray-300 rounded-lg text-black focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="text-xs font-medium text-gray-700 block mb-1">Limit Price</label>
+                            <input type="number" step="0.05" placeholder="Limit" 
+                                   class="w-full p-2 border border-gray-300 rounded-lg text-black focus:outline-none">
+                        </div>
+                    </div>
+                    
+                    <p class="text-[10px] text-gray-500 mt-2">Order Limit: CNC • Product: Auto</p>
+                </div>
+
+                <!-- Spacer for swipe button -->
+                <div class="h-16"></div> 
+            </div>
+
+            <!-- Swipe to Create GTT (Fixed Bottom) -->
+            <div class="fixed bottom-0 w-full max-w-[500px] p-4 bg-white border-t border-gray-100 shadow-xl">
+                <button onclick="console.log('GTT Created!')" 
+                        class="w-full py-3 bg-blue-600 text-white font-semibold rounded-lg text-lg active:bg-blue-700 transition-colors focus:outline-none">
+                    Swipe to Create GTT
+                </button>
+            </div>
+        `;
+    }
+
+    /** Closes the GTT Fullscreen Order Window */
+    function closeGTTOrder() {
+        document.getElementById('gtt-screen').classList.remove('slide-open-side');
+        // Re-open the stock detail sheet
+        if (currentStock) openStockDetailSheet(currentStock.id);
+    }
+    
+    // --- Header Scroll Logic ---
+
+    let lastScrollTop = 0;
+    
+    /** Sets up the scroll listener for header visibility */
+    function setupWatchlistScrollBehavior() {
+        const mainContent = document.getElementById('main-content');
+        const header = document.getElementById('watchlist-header');
+
+        mainContent.addEventListener('scroll', () => {
+            let st = mainContent.scrollTop;
+            
+            // Check if scrolling past the initial padding/header height
+            if (st > header.offsetHeight) {
+                if (st > lastScrollTop) {
+                    // Downscroll: Hide header
+                    header.style.transform = 'translateY(-100%)';
+                } else {
+                    // Upscroll: Show header
+                    header.style.transform = 'translateY(0)';
+                }
+            } else {
+                 // At the top: Always show header fully
+                header.style.transform = 'translateY(0)';
+            }
+            lastScrollTop = st <= 0 ? 0 : st; // For mobile bounce
+        }, { passive: true });
+    }
+    
+    // --- Auth Logic (Kept for Firebase function) ---
+    function toggleAuthMode() {
+        authMode = authMode === 'login' ? 'signup' : 'login';
+        document.getElementById('auth-primary-btn').textContent = authMode === 'login' ? 'Login' : 'Create Account';
+    }
+
+    async function handleAuthAction(action) {
+        const email = document.getElementById('auth-email').value;
+        const password = document.getElementById('auth-password').value;
+        const statusEl = document.getElementById('auth-status');
+        
+        try {
+            if (action === 'login') {
+                 await signInWithEmailAndPassword(auth, email, password);
+            } else if (action === 'signup') {
+                 await createUserWithEmailAndPassword(auth, email, password);
+            }
+            statusEl.textContent = 'Success! Redirecting...';
+        } catch (error) {
+            statusEl.textContent = `Error: ${error.message}`;
+        }
+    }
+</script>
