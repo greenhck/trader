@@ -8,6 +8,8 @@
     <link rel="stylesheet" href="tailwind.min.css">
     <!-- Load Font Awesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" />
+    <!-- Load API Config for yfinance -->
+    <script src="api_config.js"></script>
     <style>
         /* Custom styles to ensure edge-to-edge fit and smooth transitions */
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
@@ -336,7 +338,12 @@
     // --- GLOBAL STATE ---
     let app, db, auth;
     let userId = null;
-    let allStocksData = [];
+    
+    // API Configuration - Change this to your deployed API URL
+    const API_URL = 'http://localhost:5000';  // Update with your deployed API URL
+    
+    // Cache for stock data fetched from API
+    let stockDataCache = {};
 
     // Firestore-synced data
     let allWatchlists = [];
@@ -496,6 +503,25 @@
             console.error("Notes Snapshot Error:", error);
         }));
 
+        // 5. Stocks Listener - Load stocks data from Firebase
+        const stocksQuery = collection(db, getCollectionPath('stocks'));
+        initialListeners.push(onSnapshot(stocksQuery, (snapshot) => {
+            snapshot.docs.forEach(doc => {
+                const data = doc.data();
+                stockDataCache[doc.id] = {
+                    symbol: data.symbol,
+                    name: data.name,
+                    ltp: data.ltp,
+                    change: data.change,
+                    percent: data.percent,
+                    index: data.exchange
+                };
+            });
+            renderStockList();
+        }, (error) => {
+            console.error("Stocks Snapshot Error:", error);
+        }));
+
         console.log("Firestore Listeners started for user:", userId);
     };
 
@@ -506,7 +532,8 @@
         if (!db || !userId) return;
 
         const defaultId = 'my-watchlist';
-        const initialStocks = allStocksData.length > 0 ? allStocksData.slice(0, 4).map(s => s.id) : [];
+        // Start with empty watchlist - user can search and add stocks
+        const initialStocks = [];
 
         try {
             await setDoc(doc(db, getCollectionPath('watchlists'), defaultId), {
@@ -600,77 +627,37 @@
             auth = getAuth(app);
             db = getFirestore(app);
 
+            // 2. Auth State Change Listener
+            onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    userId = user.uid;
+                    console.log("User Authenticated:", userId);
+                    hideAuthScreen(); // Hide auth screen on successful login
+                    setupRealtimeListeners();
+                    renderIndicesPopup();
+                    setupWatchlistScrollBehavior();
+                    isAuthReady = true;
+                } else {
+                    userId = null;
+                    isAuthReady = false;
+
+                    if (INITIAL_AUTH_TOKEN) {
+                        try {
+                            signInWithCustomToken(auth, INITIAL_AUTH_TOKEN);
+                        } catch (e) {
+                            console.warn("Custom token sign-in failed. Falling back to email/password auth.", e);
+                            showAuthScreen(); // Show auth screen if token fails
+                        }
+                    } else {
+                        showAuthScreen(); // No token, show the regular auth screen
+                    }
+                }
+            });
+
         } catch(e) {
             console.error("Firebase Initialization Error:", e);
-            document.getElementById('auth-status').textContent = "Initialization Failed. See console.";
-            return;
+            document.getElementById('auth-status').textContent = "Initialization Failed: " + e.message;
         }
-
-        // 1. Load Market Data from JSON file
-        try {
-            // Note: Since you mentioned marketdataNSE.json, I am using a generic placeholder
-            // but the structure from the request is used in formatting.
-            const jsonResponse = await fetch('./marketdata.json');
-             if (jsonResponse.ok) {
-                const rawData = await jsonResponse.json();
-                // CRITICAL FIX: Check if rawData is an array before mapping
-                if (Array.isArray(rawData)) {
-                    allStocksData = rawData.map(formatStockData);
-                    console.log(`Successfully loaded ${allStocksData.length} stocks from marketdata.json.`);
-                } else {
-                    console.error("marketdata.json loaded but is not an array. Using mock stock list.");
-                }
-            } else {
-                // Mock data if fetch fails (for demonstration)
-                const mockStocks = [
-                    { "Name": "Reliance Industries", "LTP": "1,416.80", "Change(%)": "1.32%" },
-                    { "Name": "Tata Consultancy Services", "LTP": "3,800.25", "Change(%)": "-0.55%" },
-                    { "Name": "HDFC Bank", "LTP": "1,500.00", "Change(%)": "2.10%" }
-                ];
-                allStocksData = mockStocks.map(formatStockData);
-                console.warn("marketdata.json not found or failed to load. Using mock stock list.");
-            }
-        } catch (error) {
-            console.error("Error loading marketdata.json:", error);
-            // Fallback to mock data if ANY error occurs during fetch/parse
-            if(allStocksData.length === 0) {
-                 const mockStocks = [
-                    { "Name": "Airtel", "LTP": "650.00", "Change(%)": "0.5%" },
-                    { "Name": "Maruti", "LTP": "9000.00", "Change(%)": "-1.2%" }
-                ];
-                allStocksData = mockStocks.map(formatStockData);
-            }
-        }
-
-        // Set persistence for user auth (optional but good practice)
-        await setPersistence(auth, browserLocalPersistence);
-
-        // 2. Set up Auth Listener
-        onAuthStateChanged(auth, async (user) => {
-            if (user) {
-                userId = user.uid;
-                console.log("User Authenticated:", userId);
-                hideAuthScreen(); // Hide auth screen on successful login
-                setupRealtimeListeners();
-                renderIndicesPopup();
-                setupWatchlistScrollBehavior();
-                isAuthReady = true;
-            } else {
-                userId = null;
-                isAuthReady = false;
-
-                if (INITIAL_AUTH_TOKEN) {
-                    try {
-                        await signInWithCustomToken(auth, INITIAL_AUTH_TOKEN);
-                    } catch (e) {
-                        console.warn("Custom token sign-in failed. Falling back to email/password auth.", e);
-                        showAuthScreen(); // Show auth screen if token fails
-                    }
-                } else {
-                    showAuthScreen(); // No token, show the regular auth screen
-                }
-            }
-        });
 
         // 3. Setup History Listener for Navigation Fix (Physical Back Button)
         window.addEventListener('popstate', (e) => {
@@ -689,8 +676,28 @@
 
     // --- UI RENDERING FUNCTIONS ---
 
-    // Helper to get formatted stock data
-    const getStockById = (id) => allStocksData.find(s => s.id === id);
+    // Helper to get formatted stock data from cache
+    const getStockById = (id) => {
+        // Get from cache (populated by Firebase listener)
+        if (stockDataCache[id]) {
+            return {
+                ...stockDataCache[id],
+                id: id,  // Add id property for compatibility
+                price: stockDataCache[id].ltp  // Add price alias for ltp
+            };
+        }
+        // Return placeholder while loading
+        return {
+            id: id,
+            symbol: id,
+            name: id,
+            ltp: 0,
+            price: 0,
+            change: 0,
+            percent: 0,
+            index: 'Loading...'
+        };
+    };
 
     const renderWatchlistTabs = () => {
         const tabsEl = document.getElementById('watchlist-tabs');
@@ -1012,39 +1019,122 @@
         }
     };
 
-    window.handleSearchInput = (value) => {
+    window.handleSearchInput = async (value) => {
         const resultsEl = document.getElementById('search-results');
         if (value.length < 2) {
             resultsEl.innerHTML = '<p class="text-sm text-gray-500 p-2">Start typing to search...</p>';
             return;
         }
 
-        const filtered = allStocksData.filter(s =>
-            s.name.toLowerCase().includes(value.toLowerCase()) ||
-            s.id.includes(value.toLowerCase())
-        ).slice(0, 10); // Limit to 10 results
+        // Show loading state
+        resultsEl.innerHTML = '<p class="text-sm text-gray-500 p-2">Searching...</p>';
+
+        try {
+            // Search using yfinance API
+            const results = await searchStocksAPI(value);
+
+            if (results.length === 0) {
+                resultsEl.innerHTML = '<p class="text-sm text-gray-500 p-2">No stocks found</p>';
+                return;
+            }
+
+            const currentList = allWatchlists.find(w => w.id === currentWatchlistId);
+
+            resultsEl.innerHTML = results.map(stock => {
+                const stockId = stock.symbol;
+                const isAdded = currentList?.stocks?.includes(stockId);
+                const actionIcon = isAdded ? 'fa-check text-green-600' : 'fa-plus text-blue-600';
+                const actionText = isAdded ? 'Added' : 'Add';
+
+                return `
+                    <div class="flex justify-between items-center p-2 hover:bg-gray-50 rounded-lg">
+                        <div>
+                            <p class="text-sm font-medium text-black">${stock.name}</p>
+                            <p class="text-xs text-gray-500 uppercase">${stock.exchange} • ${stock.symbol}</p>
+                        </div>
+                        <button class="flex items-center space-x-1 p-1" onclick="addStockToWatchlist(event, '${stockId}', '${stock.name}', '${stock.exchange}')">
+                            <i class="fa-solid ${actionIcon} text-xs"></i>
+                            <span class="text-xs text-gray-600">${actionText}</span>
+                        </button>
+                    </div>
+                `;
+            }).join('');
+        } catch (error) {
+            console.error('Search error:', error);
+            resultsEl.innerHTML = '<p class="text-sm text-red-500 p-2">Search failed. Make sure API is running.</p>';
+        }
+    };
+
+    window.addStockToWatchlist = async (event, symbol, name, exchange) => {
+        event.stopPropagation();
+        if (!userId) return;
 
         const currentList = allWatchlists.find(w => w.id === currentWatchlistId);
+        if (!currentList) return;
 
-        resultsEl.innerHTML = filtered.map(stock => {
-            // Logic review confirmed: checks against current active watchlist (currentWatchlistId)
-            const isAdded = currentList?.stocks?.includes(stock.id);
-            const actionIcon = isAdded ? 'fa-check text-green-600' : 'fa-plus text-blue-600';
-            const actionText = isAdded ? 'Added' : 'Add';
+        // Check if already added
+        if (currentList.stocks.includes(symbol)) {
+            // Remove stock
+            const newStocks = currentList.stocks.filter(s => s !== symbol);
+            try {
+                const listRef = doc(db, getCollectionPath('watchlists'), currentList.id);
+                await updateDoc(listRef, { stocks: newStocks });
+                
+                // Also remove from Firebase stocks collection
+                await deleteDoc(doc(db, getCollectionPath('stocks'), symbol));
+                
+                // Remove from cache
+                delete stockDataCache[symbol];
+                
+                // Update search UI
+                handleSearchInput(document.getElementById('search-input').value);
+            } catch (error) {
+                console.error("Error removing stock:", error);
+            }
+            return;
+        }
 
-            return `
-                <div class="flex justify-between items-center p-2 hover:bg-gray-50 rounded-lg">
-                    <div>
-                        <p class="text-sm font-medium text-black">${stock.name}</p>
-                        <p class="text-xs text-gray-500 uppercase">${stock.index}</p>
-                    </div>
-                    <button class="flex items-center space-x-1 p-1" onclick="toggleStockInWatchlist(event, '${stock.id}')">
-                        <i class="fa-solid ${actionIcon} text-xs"></i>
-                        <span class="text-xs text-gray-600">${actionText}</span>
-                    </button>
-                </div>
-            `;
-        }).join('');
+        // Fetch full stock data from API and add to Firebase
+        try {
+            const stockData = await fetchStockData(symbol);
+            
+            if (!stockData) {
+                alert('Failed to fetch stock data. Make sure API is running on ' + API_CONFIG.API_URL);
+                return;
+            }
+
+            // Add stock to watchlist
+            const newStocks = [...currentList.stocks, symbol];
+            const listRef = doc(db, getCollectionPath('watchlists'), currentList.id);
+            await updateDoc(listRef, { stocks: newStocks });
+            
+            // Store stock data in Firebase
+            await setDoc(doc(db, getCollectionPath('stocks'), symbol), {
+                symbol: stockData.symbol,
+                name: stockData.name,
+                ltp: stockData.ltp,
+                change: stockData.change,
+                percent: stockData.percent,
+                exchange: stockData.exchange,
+                lastUpdated: new Date().toISOString()
+            });
+            
+            // Update cache
+            stockDataCache[symbol] = {
+                symbol: stockData.symbol,
+                name: stockData.name,
+                ltp: stockData.ltp,
+                change: stockData.change,
+                percent: stockData.percent,
+                index: stockData.exchange
+            };
+            
+            // Update search UI
+            handleSearchInput(document.getElementById('search-input').value);
+        } catch (error) {
+            console.error("Error adding stock to watchlist:", error);
+            alert('Failed to add stock: ' + error.message);
+        }
     };
 
     window.toggleStockInWatchlist = async (event, stockId) => {
