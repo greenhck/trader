@@ -3,26 +3,26 @@
     "s1": {
       "id": "s1",
       "name": "Tata Consultancy Services Limited",
-      "ltp": 3087.0,
-      "change": 23.8,
-      "percent": 0.78,
+      "ltp": 3088.0,
+      "change": 24.8,
+      "percent": 0.81,
       "index": "NSE",
       "holding": 0
     },
     "s2": {
       "id": "s2",
       "name": "Reliance Industries Limited",
-      "ltp": 1480.8,
-      "change": 29.2,
-      "percent": 2.01,
+      "ltp": 1482.1,
+      "change": 30.5,
+      "percent": 2.1,
       "index": "NSE",
       "holding": 0
     },
     "s3": {
       "id": "s3",
       "name": "HDFC Bank Limited",
-      "ltp": 1005.65,
-      "change": 10.9,
+      "ltp": 1005.7,
+      "change": 10.95,
       "percent": 1.1,
       "index": "NSE",
       "holding": 0
@@ -39,27 +39,27 @@
     "s5": {
       "id": "s5",
       "name": "Wipro Limited",
-      "ltp": 244.71,
-      "change": 1.73,
-      "percent": 0.71,
+      "ltp": 244.05,
+      "change": 1.07,
+      "percent": 0.44,
       "index": "NSE",
       "holding": 0
     },
     "s6": {
       "id": "s6",
       "name": "Tech Mahindra Limited",
-      "ltp": 1465.3,
-      "change": 11.6,
-      "percent": 0.8,
+      "ltp": 1464.8,
+      "change": 11.1,
+      "percent": 0.76,
       "index": "NSE",
       "holding": 0
     },
     "s7": {
       "id": "s7",
       "name": "ICICI Bank Limited",
-      "ltp": 1381.3,
-      "change": 3.6,
-      "percent": 0.26,
+      "ltp": 1380.8,
+      "change": 3.1,
+      "percent": 0.23,
       "index": "NSE",
       "holding": 0
     }
@@ -67,23 +67,23 @@
   "indices": [
     {
       "name": "NIFTY 50",
-      "price": 25966.0,
-      "change": 122.8,
-      "percent": 0.48
+      "price": 25979.4,
+      "change": 136.2,
+      "percent": 0.53
     },
     {
       "name": "NIFTY BANK",
-      "price": 58129.25,
-      "change": 332.8,
-      "percent": 0.58
+      "price": 58135.85,
+      "change": 339.4,
+      "percent": 0.59
     },
     {
       "name": "SENSEX",
-      "price": 84786.91,
-      "change": 489.52,
-      "percent": 0.58
+      "price": 84757.9,
+      "change": 460.51,
+      "percent": 0.55
     }
   ],
-  "lastUpdated": "2025-10-27T05:18:27.513989",
-  "timestamp": "2025-10-27 05:18:27"
+  "lastUpdated": "2025-10-27T05:43:18.038524",
+  "timestamp": "2025-10-27 05:43:18"
 }
