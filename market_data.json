@@ -1,11 +1,65 @@
 {
   "stocks": {
+    "s1": {
+      "id": "s1",
+      "name": "Tata Consultancy Services Limited",
+      "ltp": 3087.0,
+      "change": 23.8,
+      "percent": 0.78,
+      "index": "NSE",
+      "holding": 0
+    },
+    "s2": {
+      "id": "s2",
+      "name": "Reliance Industries Limited",
+      "ltp": 1480.8,
+      "change": 29.2,
+      "percent": 2.01,
+      "index": "NSE",
+      "holding": 0
+    },
     "s3": {
       "id": "s3",
       "name": "HDFC Bank Limited",
-      "ltp": 1008.55,
-      "change": 13.8,
-      "percent": 1.39,
+      "ltp": 1005.65,
+      "change": 10.9,
+      "percent": 1.1,
+      "index": "NSE",
+      "holding": 0
+    },
+    "s4": {
+      "id": "s4",
+      "name": "Infosys Limited",
+      "ltp": 1510.8,
+      "change": -14.6,
+      "percent": -0.96,
+      "index": "NSE",
+      "holding": 0
+    },
+    "s5": {
+      "id": "s5",
+      "name": "Wipro Limited",
+      "ltp": 244.71,
+      "change": 1.73,
+      "percent": 0.71,
+      "index": "NSE",
+      "holding": 0
+    },
+    "s6": {
+      "id": "s6",
+      "name": "Tech Mahindra Limited",
+      "ltp": 1465.3,
+      "change": 11.6,
+      "percent": 0.8,
+      "index": "NSE",
+      "holding": 0
+    },
+    "s7": {
+      "id": "s7",
+      "name": "ICICI Bank Limited",
+      "ltp": 1381.3,
+      "change": 3.6,
+      "percent": 0.26,
       "index": "NSE",
       "holding": 0
     }
@@ -13,23 +67,23 @@
   "indices": [
     {
       "name": "NIFTY 50",
-      "price": 25965.05,
-      "change": 121.85,
-      "percent": 0.47
+      "price": 25966.0,
+      "change": 122.8,
+      "percent": 0.48
     },
     {
       "name": "NIFTY BANK",
-      "price": 58105.1,
-      "change": 308.65,
-      "percent": 0.53
+      "price": 58129.25,
+      "change": 332.8,
+      "percent": 0.58
     },
     {
       "name": "SENSEX",
-      "price": 84649.29,
-      "change": 351.9,
-      "percent": 0.42
+      "price": 84786.91,
+      "change": 489.52,
+      "percent": 0.58
     }
   ],
-  "lastUpdated": "2025-10-27T04:49:48.086044",
-  "timestamp": "2025-10-27 04:49:48"
+  "lastUpdated": "2025-10-27T05:18:27.513989",
+  "timestamp": "2025-10-27 05:18:27"
 }
