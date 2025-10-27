@@ -12,7 +12,7 @@ const API_CONFIG = {
 async function searchStocksAPI(query) {
     try {
         // Yahoo Finance autocomplete/search API
-        const searchUrl = `https://corsproxy.io/?https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=10&newsCount=0`;
+        const searchUrl = `https://cimp.rocketgill12.workers.dev/?target=https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=10&newsCount=0`;
         
         const response = await fetch(searchUrl, {
             headers: {
@@ -46,7 +46,7 @@ async function searchStocksAPI(query) {
 async function fetchStockData(symbol) {
     try {
         // Yahoo Finance quote API
-        const quoteUrl = `https://corsproxy.io/?https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1d`;
+        const quoteUrl = `https://cimp.rocketgill12.workers.dev/?target=https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1d`;
         
         const response = await fetch(quoteUrl);
         
