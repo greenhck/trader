@@ -12,7 +12,7 @@ const API_CONFIG = {
 async function searchStocksAPI(query) {
     try {
         // Yahoo Finance autocomplete/search API
-        const searchUrl = `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=10&newsCount=0`;
+        const searchUrl = `https://corsproxy.io/?https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=10&newsCount=0`;
         
         const response = await fetch(searchUrl, {
             headers: {
