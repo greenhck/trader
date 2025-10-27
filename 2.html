@@ -1061,7 +1061,7 @@
             }).join('');
         } catch (error) {
             console.error('Search error:', error);
-            resultsEl.innerHTML = '<p class="text-sm text-red-500 p-2">Search failed. Make sure API is running.</p>';
+            resultsEl.innerHTML = '<p class="text-sm text-red-500 p-2">Search failed. Check your internet connection.</p>';
         }
     };
 
@@ -1099,7 +1099,7 @@
             const stockData = await fetchStockData(symbol);
             
             if (!stockData) {
-                alert('Failed to fetch stock data. Make sure API is running on ' + API_CONFIG.API_URL);
+                alert('Failed to fetch stock data. Check your internet connection or try a different symbol.');
                 return;
             }
 
