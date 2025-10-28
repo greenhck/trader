@@ -28,3 +28,10 @@ Thumbs.db
 # Environment variables
 .env
 .env.local
+
+# Firebase credentials (NEVER commit these!)
+*serviceAccountKey*.json
+firebase-adminsdk-*.json
+
+# Old data files (no longer used with Firebase)
+market_data.json
