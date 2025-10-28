@@ -71,29 +71,6 @@ def fetch_stock_data(symbol):
         print(f"⚠️  Error fetching {symbol}: {e}")
         return None
 
-def get_all_stocks_from_firebase(db):
-    """Get all stock symbols currently stored in Firebase"""
-    try:
-        stocks_ref = db.collection('stocks')
-        docs = list(stocks_ref.stream())
-        
-        if not docs:
-            print("   ℹ️  No stocks found in 'stocks' collection")
-            return []
-        
-        symbols = []
-        for doc in docs:
-            data = doc.to_dict()
-            if 'symbol' in data:
-                symbols.append(data['symbol'])
-        
-        print(f"   ✓ Found {len(symbols)} stock(s) in 'stocks' collection")
-        return symbols
-    
-    except Exception as e:
-        print(f"⚠️  Error getting stocks from Firebase: {e}")
-        return []
-
 def get_stocks_from_watchlists(db):
     """Get all unique stock symbols from all watchlists"""
     try:
@@ -181,21 +158,17 @@ def main():
     # Initialize Firebase
     db = initialize_firebase()
     
-    # Get all unique stock symbols from Firebase
-    print("📊 Fetching stock symbols from Firebase...\n")
+    # Get all unique stock symbols from user watchlists only
+    print("📊 Fetching stocks from user watchlists...\n")
     
-    # Get stocks from both 'stocks' collection and watchlists
-    existing_stocks = get_all_stocks_from_firebase(db)
-    watchlist_stocks = get_stocks_from_watchlists(db)
-    
-    # Combine and deduplicate
-    all_symbols = list(set(existing_stocks + watchlist_stocks))
+    # Only get stocks from watchlists (not from 'stocks' collection)
+    all_symbols = get_stocks_from_watchlists(db)
     
     # If no stocks found, skip stock updates
     if not all_symbols:
-        print("\n⚠️  No stocks found in Firebase!")
+        print("\n⚠️  No stocks found in user watchlists!")
         print("   💡 Add stocks to your watchlist in the web app first.")
-        print("   📊 Only indices will be updated.\n")
+        print("   📊 Indices will still be updated.\n")
     else:
         print(f"\n📈 Total {len(all_symbols)} unique stock(s) to update\n")
     
