@@ -128,6 +128,44 @@ def get_stocks_from_watchlists(db):
         
         if not artifacts_docs:
             print("   ⚠️  'artifacts' collection exists but is empty or no documents accessible")
+            print("   💡 This is likely a security rules issue")
+            print("   🔧 Trying direct path: artifacts/default-app-id/users...")
+            
+            # Try accessing the known path directly even if we can't list it
+            try:
+                users_ref = db.collection('artifacts').document('default-app-id').collection('users')
+                users = list(users_ref.stream())
+                
+                if users:
+                    print(f"   ✓ SUCCESS! Found {len(users)} user(s) via direct path")
+                    app_id = 'default-app-id'
+                    
+                    all_symbols = set()
+                    watchlist_count = 0
+                    user_count = len(users)
+                    
+                    for user_doc in users:
+                        user_id = user_doc.id
+                        watchlists_ref = db.collection('artifacts').document(app_id).collection('users').document(user_id).collection('watchlists')
+                        watchlists = list(watchlists_ref.stream())
+                        
+                        for watchlist_doc in watchlists:
+                            data = watchlist_doc.to_dict()
+                            if 'stocks' in data and isinstance(data['stocks'], list):
+                                all_symbols.update(data['stocks'])
+                                watchlist_count += 1
+                                print(f"   → User {user_id[:8]}... has {len(data['stocks'])} stock(s) in watchlist '{watchlist_doc.id}'")
+                    
+                    if all_symbols:
+                        print(f"\n   ✓ Found {user_count} user(s), {watchlist_count} watchlist(s) with {len(all_symbols)} unique stock(s)")
+                        return list(all_symbols), app_id
+                    else:
+                        print(f"\n   ℹ️  Found {user_count} user(s) but no stocks in any watchlists")
+                        return [], app_id
+                        
+            except Exception as e:
+                print(f"   ⚠️  Direct path failed: {e}")
+            
             print("   💡 Checking if data is at root level instead...")
             
             # Try root-level users collection
