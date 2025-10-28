@@ -67,15 +67,15 @@
   "indices": [
     {
       "name": "NIFTY 50",
-      "price": 25966.05,
-      "change": 122.85,
-      "percent": 0.48
+      "price": 25939.95,
+      "change": 96.75,
+      "percent": 0.37
     },
     {
       "name": "NIFTY BANK",
-      "price": 58114.25,
-      "change": 317.8,
-      "percent": 0.55
+      "price": 58006.55,
+      "change": 210.1,
+      "percent": 0.36
     },
     {
       "name": "SENSEX",
@@ -84,6 +84,6 @@
       "percent": 0.57
     }
   ],
-  "lastUpdated": "2025-10-27T16:52:20.896940",
-  "timestamp": "2025-10-27 16:52:20"
+  "lastUpdated": "2025-10-28T03:39:53.055756",
+  "timestamp": "2025-10-28 03:39:53"
 }
