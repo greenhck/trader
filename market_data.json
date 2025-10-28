@@ -3,63 +3,63 @@
     "s1": {
       "id": "s1",
       "name": "Tata Consultancy Services Limited",
-      "ltp": 3045.4,
-      "change": -39.5,
-      "percent": -1.28,
+      "ltp": 3044.1,
+      "change": -40.8,
+      "percent": -1.32,
       "index": "NSE",
       "holding": 0
     },
     "s2": {
       "id": "s2",
       "name": "Reliance Industries Limited",
-      "ltp": 1482.6,
-      "change": -1.5,
-      "percent": -0.1,
+      "ltp": 1480.6,
+      "change": -3.5,
+      "percent": -0.24,
       "index": "NSE",
       "holding": 0
     },
     "s3": {
       "id": "s3",
       "name": "HDFC Bank Limited",
-      "ltp": 999.2,
-      "change": -3.75,
-      "percent": -0.37,
+      "ltp": 999.85,
+      "change": -3.1,
+      "percent": -0.31,
       "index": "NSE",
       "holding": 0
     },
     "s4": {
       "id": "s4",
       "name": "Infosys Limited",
-      "ltp": 1492.9,
-      "change": -11.6,
-      "percent": -0.77,
+      "ltp": 1492.6,
+      "change": -11.9,
+      "percent": -0.79,
       "index": "NSE",
       "holding": 0
     },
     "s5": {
       "id": "s5",
       "name": "Wipro Limited",
-      "ltp": 241.7,
-      "change": -2.21,
-      "percent": -0.91,
+      "ltp": 241.52,
+      "change": -2.39,
+      "percent": -0.98,
       "index": "NSE",
       "holding": 0
     },
     "s6": {
       "id": "s6",
       "name": "Tech Mahindra Limited",
-      "ltp": 1438.3,
-      "change": -24.5,
-      "percent": -1.67,
+      "ltp": 1439.9,
+      "change": -22.9,
+      "percent": -1.57,
       "index": "NSE",
       "holding": 0
     },
     "s7": {
       "id": "s7",
       "name": "ICICI Bank Limited",
-      "ltp": 1360.0,
-      "change": -17.6,
-      "percent": -1.28,
+      "ltp": 1358.5,
+      "change": -19.1,
+      "percent": -1.39,
       "index": "NSE",
       "holding": 0
     }
@@ -67,23 +67,23 @@
   "indices": [
     {
       "name": "NIFTY 50",
-      "price": 25854.05,
-      "change": -85.9,
-      "percent": -0.33
+      "price": 25828.15,
+      "change": -111.8,
+      "percent": -0.43
     },
     {
       "name": "NIFTY BANK",
-      "price": 58028.05,
-      "change": 21.5,
-      "percent": 0.04
+      "price": 57996.0,
+      "change": -10.55,
+      "percent": -0.02
     },
     {
       "name": "SENSEX",
-      "price": 84406.86,
-      "change": -218.85,
-      "percent": -0.26
+      "price": 84269.1,
+      "change": -356.61,
+      "percent": -0.42
     }
   ],
-  "lastUpdated": "2025-10-28T08:48:19.286525",
-  "timestamp": "2025-10-28 08:48:19"
+  "lastUpdated": "2025-10-28T09:18:17.803628",
+  "timestamp": "2025-10-28 09:18:17"
 }
