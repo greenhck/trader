@@ -77,20 +77,83 @@ def fetch_stock_data(symbol):
         print(f"⚠️  Error fetching {symbol}: {e}")
         return None
 
+def get_stocks_from_root_users(db, users):
+    """Get stocks from root-level users collection (alternative structure)"""
+    all_symbols = set()
+    watchlist_count = 0
+    user_count = len(users)
+    
+    for user_doc in users:
+        user_id = user_doc.id
+        
+        # Get watchlists for this user at root level
+        watchlists_ref = db.collection('users').document(user_id).collection('watchlists')
+        watchlists = list(watchlists_ref.stream())
+        
+        for watchlist_doc in watchlists:
+            data = watchlist_doc.to_dict()
+            if 'stocks' in data and isinstance(data['stocks'], list):
+                all_symbols.update(data['stocks'])
+                watchlist_count += 1
+                print(f"   → User {user_id[:8]}... has {len(data['stocks'])} stock(s) in watchlist '{watchlist_doc.id}'")
+    
+    if all_symbols:
+        print(f"\n   ✓ Found {user_count} user(s), {watchlist_count} watchlist(s) with {len(all_symbols)} unique stock(s)")
+    else:
+        print(f"\n   ℹ️  Found {user_count} user(s) but no stocks in any watchlists")
+    
+    return list(all_symbols)
+
 def get_stocks_from_watchlists(db):
     """Get all unique stock symbols from all user watchlists"""
     try:
-        # Path: artifacts/default-app-id/users/{userId}/watchlists
-        users_ref = db.collection('artifacts').document('default-app-id').collection('users')
+        # First, check what's in the artifacts collection
+        print("   🔍 Checking Firebase structure...")
+        artifacts_ref = db.collection('artifacts')
+        artifacts_docs = list(artifacts_ref.stream())
+        
+        if not artifacts_docs:
+            print("   ⚠️  'artifacts' collection not found or empty")
+            print("   💡 Checking if data is at root level instead...")
+            
+            # Try root-level users collection
+            users_ref = db.collection('users')
+            users = list(users_ref.stream())
+            
+            if users:
+                print(f"   ✓ Found {len(users)} user(s) at root level")
+                stocks = get_stocks_from_root_users(db, users)
+                return stocks, None  # None means root level, no app_id
+            else:
+                print("   ℹ️  No users found in Firebase")
+                return [], None
+        
+        # List all app IDs in artifacts
+        print(f"   ✓ Found artifacts collection with {len(artifacts_docs)} app(s)")
+        for app_doc in artifacts_docs:
+            print(f"      → App ID: '{app_doc.id}'")
+        
+        # Try to find the correct app ID (try default-app-id first, then others)
+        app_id = 'default-app-id'
+        users_ref = db.collection('artifacts').document(app_id).collection('users')
         users = list(users_ref.stream())
         
+        # If no users found with default-app-id, try the first app ID we found
+        if not users and artifacts_docs:
+            app_id = artifacts_docs[0].id
+            print(f"   🔄 Trying app ID: '{app_id}'")
+            users_ref = db.collection('artifacts').document(app_id).collection('users')
+            users = list(users_ref.stream())
+        
         if not users:
-            print("   ℹ️  No users found in Firebase")
-            return []
+            print(f"   ℹ️  No users found in artifacts/{app_id}/users")
+            return [], app_id
         
         all_symbols = set()
         watchlist_count = 0
         user_count = 0
+        
+        print(f"   ✓ Found {len(users)} user(s) in artifacts/{app_id}/users")
         
         # Iterate through all users
         for user_doc in users:
@@ -98,7 +161,7 @@ def get_stocks_from_watchlists(db):
             user_count += 1
             
             # Get watchlists for this user
-            watchlists_ref = db.collection('artifacts').document('default-app-id').collection('users').document(user_id).collection('watchlists')
+            watchlists_ref = db.collection('artifacts').document(app_id).collection('users').document(user_id).collection('watchlists')
             watchlists = list(watchlists_ref.stream())
             
             for watchlist_doc in watchlists:
@@ -113,18 +176,27 @@ def get_stocks_from_watchlists(db):
         else:
             print(f"\n   ℹ️  Found {user_count} user(s) but no stocks in any watchlists")
         
-        return list(all_symbols)
+        # Return both stocks and app_id
+        return list(all_symbols), app_id
     
     except Exception as e:
         print(f"⚠️  Error getting watchlist stocks: {e}")
-        return []
+        import traceback
+        traceback.print_exc()
+        return [], None
 
-def update_stock_in_firebase(db, stock_data):
+def update_stock_in_firebase(db, stock_data, app_id=None):
     """Update or create a stock document in Firebase"""
     try:
         symbol = stock_data['symbol']
-        # Save to shared location: artifacts/default-app-id/stocks/{symbol}
-        stock_ref = db.collection('artifacts').document('default-app-id').collection('stocks').document(symbol)
+        
+        if app_id:
+            # Save to: artifacts/{app_id}/stocks/{symbol}
+            stock_ref = db.collection('artifacts').document(app_id).collection('stocks').document(symbol)
+        else:
+            # Save to root level: stocks/{symbol}
+            stock_ref = db.collection('stocks').document(symbol)
+        
         stock_ref.set(stock_data, merge=True)
         return True
     
@@ -132,7 +204,7 @@ def update_stock_in_firebase(db, stock_data):
         print(f"⚠️  Error updating {stock_data['symbol']}: {e}")
         return False
 
-def update_indices_in_firebase(db):
+def update_indices_in_firebase(db, app_id=None):
     """Update major Indian market indices"""
     indices_symbols = {
         'NIFTY 50': '^NSEI',
@@ -162,8 +234,13 @@ def update_indices_in_firebase(db):
                     'lastUpdated': datetime.now().isoformat()
                 }
                 
-                # Store in shared indices collection: artifacts/default-app-id/indices/{symbol}
-                index_ref = db.collection('artifacts').document('default-app-id').collection('indices').document(symbol)
+                if app_id:
+                    # Store in: artifacts/{app_id}/indices/{symbol}
+                    index_ref = db.collection('artifacts').document(app_id).collection('indices').document(symbol)
+                else:
+                    # Store at root level: indices/{symbol}
+                    index_ref = db.collection('indices').document(symbol)
+                
                 index_ref.set(index_data, merge=True)
                 updated_count += 1
         
@@ -185,7 +262,12 @@ def main():
     print("📊 Fetching stocks from user watchlists...\n")
     
     # Only get stocks from watchlists (not from 'stocks' collection)
-    all_symbols = get_stocks_from_watchlists(db)
+    all_symbols, app_id = get_stocks_from_watchlists(db)
+    
+    if app_id:
+        print(f"\n💾 Using Firebase path: artifacts/{app_id}/")
+    else:
+        print("\n💾 Using root-level Firebase collections")
     
     # If no stocks found, skip stock updates
     if not all_symbols:
@@ -204,7 +286,7 @@ def main():
         stock_data = fetch_stock_data(symbol)
         
         if stock_data:
-            if update_stock_in_firebase(db, stock_data):
+            if update_stock_in_firebase(db, stock_data, app_id):
                 print(f"✓ Updated (₹{stock_data['ltp']}, {stock_data['percent']:+.2f}%)")
                 updated_count += 1
             else:
@@ -216,7 +298,7 @@ def main():
     
     # Update indices
     print("\n📊 Updating market indices...")
-    indices_updated = update_indices_in_firebase(db)
+    indices_updated = update_indices_in_firebase(db, app_id)
     
     # Summary
     print("\n" + "="*60)
