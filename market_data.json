@@ -3,36 +3,36 @@
     "s1": {
       "id": "s1",
       "name": "Tata Consultancy Services Limited",
-      "ltp": 3064.2,
-      "change": -20.7,
-      "percent": -0.67,
+      "ltp": 3055.3,
+      "change": -29.6,
+      "percent": -0.96,
       "index": "NSE",
       "holding": 0
     },
     "s2": {
       "id": "s2",
       "name": "Reliance Industries Limited",
-      "ltp": 1483.1,
-      "change": -1.0,
-      "percent": -0.07,
+      "ltp": 1478.9,
+      "change": -5.2,
+      "percent": -0.35,
       "index": "NSE",
       "holding": 0
     },
     "s3": {
       "id": "s3",
       "name": "HDFC Bank Limited",
-      "ltp": 998.1,
-      "change": -4.85,
-      "percent": -0.48,
+      "ltp": 997.35,
+      "change": -5.6,
+      "percent": -0.56,
       "index": "NSE",
       "holding": 0
     },
     "s4": {
       "id": "s4",
       "name": "Infosys Limited",
-      "ltp": 1495.9,
-      "change": -8.6,
-      "percent": -0.57,
+      "ltp": 1493.8,
+      "change": -10.7,
+      "percent": -0.71,
       "index": "NSE",
       "holding": 0
     },
@@ -48,18 +48,18 @@
     "s6": {
       "id": "s6",
       "name": "Tech Mahindra Limited",
-      "ltp": 1453.4,
-      "change": -9.4,
-      "percent": -0.64,
+      "ltp": 1449.1,
+      "change": -13.7,
+      "percent": -0.94,
       "index": "NSE",
       "holding": 0
     },
     "s7": {
       "id": "s7",
       "name": "ICICI Bank Limited",
-      "ltp": 1359.8,
-      "change": -17.8,
-      "percent": -1.29,
+      "ltp": 1357.6,
+      "change": -20.0,
+      "percent": -1.45,
       "index": "NSE",
       "holding": 0
     }
@@ -67,23 +67,23 @@
   "indices": [
     {
       "name": "NIFTY 50",
-      "price": 25888.55,
-      "change": -51.4,
-      "percent": -0.2
+      "price": 25854.6,
+      "change": -85.35,
+      "percent": -0.33
     },
     {
       "name": "NIFTY BANK",
-      "price": 57894.45,
-      "change": -112.1,
-      "percent": -0.19
+      "price": 57811.75,
+      "change": -194.8,
+      "percent": -0.34
     },
     {
       "name": "SENSEX",
-      "price": 84434.23,
-      "change": -191.48,
-      "percent": -0.23
+      "price": 84372.6,
+      "change": -253.11,
+      "percent": -0.3
     }
   ],
-  "lastUpdated": "2025-10-28T05:17:44.964724",
-  "timestamp": "2025-10-28 05:17:44"
+  "lastUpdated": "2025-10-28T05:42:14.963532",
+  "timestamp": "2025-10-28 05:42:14"
 }
