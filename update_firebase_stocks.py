@@ -75,7 +75,11 @@ def get_all_stocks_from_firebase(db):
     """Get all stock symbols currently stored in Firebase"""
     try:
         stocks_ref = db.collection('stocks')
-        docs = stocks_ref.stream()
+        docs = list(stocks_ref.stream())
+        
+        if not docs:
+            print("   ℹ️  No stocks found in 'stocks' collection")
+            return []
         
         symbols = []
         for doc in docs:
@@ -83,6 +87,7 @@ def get_all_stocks_from_firebase(db):
             if 'symbol' in data:
                 symbols.append(data['symbol'])
         
+        print(f"   ✓ Found {len(symbols)} stock(s) in 'stocks' collection")
         return symbols
     
     except Exception as e:
@@ -93,14 +98,22 @@ def get_stocks_from_watchlists(db):
     """Get all unique stock symbols from all watchlists"""
     try:
         watchlists_ref = db.collection('watchlists')
-        docs = watchlists_ref.stream()
+        docs = list(watchlists_ref.stream())
+        
+        if not docs:
+            print("   ℹ️  No watchlists found in Firebase")
+            return []
         
         all_symbols = set()
-        for doc in watchlists_ref.stream():
+        watchlist_count = 0
+        
+        for doc in docs:
             data = doc.to_dict()
             if 'stocks' in data and isinstance(data['stocks'], list):
                 all_symbols.update(data['stocks'])
+                watchlist_count += 1
         
+        print(f"   ✓ Found {watchlist_count} watchlist(s) with {len(all_symbols)} unique stock(s)")
         return list(all_symbols)
     
     except Exception as e:
@@ -169,7 +182,7 @@ def main():
     db = initialize_firebase()
     
     # Get all unique stock symbols from Firebase
-    print("📊 Fetching stock symbols from Firebase...")
+    print("📊 Fetching stock symbols from Firebase...\n")
     
     # Get stocks from both 'stocks' collection and watchlists
     existing_stocks = get_all_stocks_from_firebase(db)
@@ -178,15 +191,13 @@ def main():
     # Combine and deduplicate
     all_symbols = list(set(existing_stocks + watchlist_stocks))
     
-    # If no stocks found, use default list
+    # If no stocks found, skip stock updates
     if not all_symbols:
-        print("⚠️  No stocks found in Firebase, using default list")
-        all_symbols = [
-            'TCS.NS', 'RELIANCE.NS', 'HDFCBANK.NS', 
-            'INFY.NS', 'WIPRO.NS', 'TECHM.NS', 'ICICIBANK.NS'
-        ]
-    
-    print(f"📈 Found {len(all_symbols)} stocks to update\n")
+        print("\n⚠️  No stocks found in Firebase!")
+        print("   💡 Add stocks to your watchlist in the web app first.")
+        print("   📊 Only indices will be updated.\n")
+    else:
+        print(f"\n📈 Total {len(all_symbols)} unique stock(s) to update\n")
     
     # Update each stock
     updated_count = 0
