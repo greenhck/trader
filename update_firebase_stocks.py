@@ -107,13 +107,27 @@ def get_stocks_from_root_users(db, users):
 def get_stocks_from_watchlists(db):
     """Get all unique stock symbols from all user watchlists"""
     try:
-        # First, check what's in the artifacts collection
+        # First, let's see ALL collections at root level
         print("   🔍 Checking Firebase structure...")
+        print("   📁 Listing all root-level collections...")
+        
+        collections = db.collections()
+        collection_names = []
+        for collection in collections:
+            collection_names.append(collection.id)
+            print(f"      → Found collection: '{collection.id}'")
+        
+        if not collection_names:
+            print("      ⚠️  No collections found at root level!")
+            print("      💡 Check Firebase security rules and service account permissions")
+            return [], None
+        
+        # Now check if artifacts exists
         artifacts_ref = db.collection('artifacts')
         artifacts_docs = list(artifacts_ref.stream())
         
         if not artifacts_docs:
-            print("   ⚠️  'artifacts' collection not found or empty")
+            print("   ⚠️  'artifacts' collection exists but is empty or no documents accessible")
             print("   💡 Checking if data is at root level instead...")
             
             # Try root-level users collection
@@ -129,9 +143,17 @@ def get_stocks_from_watchlists(db):
                 return [], None
         
         # List all app IDs in artifacts
-        print(f"   ✓ Found artifacts collection with {len(artifacts_docs)} app(s)")
+        print(f"\n   ✓ Found artifacts collection with {len(artifacts_docs)} app(s)")
         for app_doc in artifacts_docs:
             print(f"      → App ID: '{app_doc.id}'")
+            
+            # List subcollections for this app
+            app_ref = db.collection('artifacts').document(app_doc.id)
+            subcollections = app_ref.collections()
+            subcolls = list(subcollections)
+            if subcolls:
+                for subcoll in subcolls:
+                    print(f"         └── Subcollection: '{subcoll.id}'")
         
         # Try to find the correct app ID (try default-app-id first, then others)
         app_id = 'default-app-id'
