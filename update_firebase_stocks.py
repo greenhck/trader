@@ -2,6 +2,12 @@
 """
 Update Firebase Firestore with real-time stock data from yfinance
 Runs via GitHub Actions every 15 minutes
+
+Firebase Structure:
+  artifacts/default-app-id/
+    ├── users/{userId}/watchlists/{watchlistId} - User watchlists (READ from here)
+    ├── stocks/{symbol} - Shared stock data (WRITE here)
+    └── indices/{symbol} - Market indices (WRITE here)
 """
 import json
 import os
@@ -72,25 +78,41 @@ def fetch_stock_data(symbol):
         return None
 
 def get_stocks_from_watchlists(db):
-    """Get all unique stock symbols from all watchlists"""
+    """Get all unique stock symbols from all user watchlists"""
     try:
-        watchlists_ref = db.collection('watchlists')
-        docs = list(watchlists_ref.stream())
+        # Path: artifacts/default-app-id/users/{userId}/watchlists
+        users_ref = db.collection('artifacts').document('default-app-id').collection('users')
+        users = list(users_ref.stream())
         
-        if not docs:
-            print("   ℹ️  No watchlists found in Firebase")
+        if not users:
+            print("   ℹ️  No users found in Firebase")
             return []
         
         all_symbols = set()
         watchlist_count = 0
+        user_count = 0
         
-        for doc in docs:
-            data = doc.to_dict()
-            if 'stocks' in data and isinstance(data['stocks'], list):
-                all_symbols.update(data['stocks'])
-                watchlist_count += 1
+        # Iterate through all users
+        for user_doc in users:
+            user_id = user_doc.id
+            user_count += 1
+            
+            # Get watchlists for this user
+            watchlists_ref = db.collection('artifacts').document('default-app-id').collection('users').document(user_id).collection('watchlists')
+            watchlists = list(watchlists_ref.stream())
+            
+            for watchlist_doc in watchlists:
+                data = watchlist_doc.to_dict()
+                if 'stocks' in data and isinstance(data['stocks'], list):
+                    all_symbols.update(data['stocks'])
+                    watchlist_count += 1
+                    print(f"   → User {user_id[:8]}... has {len(data['stocks'])} stock(s) in watchlist '{watchlist_doc.id}'")
         
-        print(f"   ✓ Found {watchlist_count} watchlist(s) with {len(all_symbols)} unique stock(s)")
+        if all_symbols:
+            print(f"\n   ✓ Found {user_count} user(s), {watchlist_count} watchlist(s) with {len(all_symbols)} unique stock(s)")
+        else:
+            print(f"\n   ℹ️  Found {user_count} user(s) but no stocks in any watchlists")
+        
         return list(all_symbols)
     
     except Exception as e:
@@ -101,7 +123,8 @@ def update_stock_in_firebase(db, stock_data):
     """Update or create a stock document in Firebase"""
     try:
         symbol = stock_data['symbol']
-        stock_ref = db.collection('stocks').document(symbol)
+        # Save to shared location: artifacts/default-app-id/stocks/{symbol}
+        stock_ref = db.collection('artifacts').document('default-app-id').collection('stocks').document(symbol)
         stock_ref.set(stock_data, merge=True)
         return True
     
@@ -139,8 +162,8 @@ def update_indices_in_firebase(db):
                     'lastUpdated': datetime.now().isoformat()
                 }
                 
-                # Store in 'indices' collection
-                index_ref = db.collection('indices').document(symbol)
+                # Store in shared indices collection: artifacts/default-app-id/indices/{symbol}
+                index_ref = db.collection('artifacts').document('default-app-id').collection('indices').document(symbol)
                 index_ref.set(index_data, merge=True)
                 updated_count += 1
         
