@@ -5,8 +5,9 @@ Runs via GitHub Actions every 15 minutes
 
 Firebase Structure:
   artifacts/default-app-id/
-    ├── users/{userId}/watchlists/{watchlistId} - User watchlists (READ from here)
-    ├── stocks/{symbol} - Shared stock data (WRITE here)
+    ├── users/{userId}/
+    │   ├── watchlists/{watchlistId} - User watchlists (READ from here)
+    │   └── stocks/{symbol} - User-specific stock data (WRITE here)
     └── indices/{symbol} - Market indices (WRITE here)
 """
 import json
@@ -79,7 +80,7 @@ def fetch_stock_data(symbol):
 
 def get_stocks_from_root_users(db, users):
     """Get stocks from root-level users collection (alternative structure)"""
-    all_symbols = set()
+    user_stocks_map = {}  # user_id -> set of stock symbols
     watchlist_count = 0
     user_count = len(users)
     
@@ -93,19 +94,22 @@ def get_stocks_from_root_users(db, users):
         for watchlist_doc in watchlists:
             data = watchlist_doc.to_dict()
             if 'stocks' in data and isinstance(data['stocks'], list):
-                all_symbols.update(data['stocks'])
+                if user_id not in user_stocks_map:
+                    user_stocks_map[user_id] = set()
+                user_stocks_map[user_id].update(data['stocks'])
                 watchlist_count += 1
                 print(f"   → User {user_id[:8]}... has {len(data['stocks'])} stock(s) in watchlist '{watchlist_doc.id}'")
     
-    if all_symbols:
-        print(f"\n   ✓ Found {user_count} user(s), {watchlist_count} watchlist(s) with {len(all_symbols)} unique stock(s)")
+    total_stocks = sum(len(stocks) for stocks in user_stocks_map.values())
+    if user_stocks_map:
+        print(f"\n   ✓ Found {user_count} user(s), {watchlist_count} watchlist(s) with {total_stocks} stock assignments")
     else:
         print(f"\n   ℹ️  Found {user_count} user(s) but no stocks in any watchlists")
     
-    return list(all_symbols)
+    return user_stocks_map
 
 def get_stocks_from_watchlists(db):
-    """Get all unique stock symbols from all user watchlists"""
+    """Get all user-specific stock symbols from user watchlists"""
     try:
         # First, let's see ALL collections at root level
         print("   🔍 Checking Firebase structure...")
@@ -120,7 +124,7 @@ def get_stocks_from_watchlists(db):
         if not collection_names:
             print("      ⚠️  No collections found at root level!")
             print("      💡 Check Firebase security rules and service account permissions")
-            return [], None
+            return {}, None
         
         # Now check if artifacts exists
         artifacts_ref = db.collection('artifacts')
@@ -140,7 +144,7 @@ def get_stocks_from_watchlists(db):
                     print(f"   ✓ SUCCESS! Found {len(users)} user(s) via direct path")
                     app_id = 'default-app-id'
                     
-                    all_symbols = set()
+                    user_stocks_map = {}  # user_id -> set of stock symbols
                     watchlist_count = 0
                     user_count = len(users)
                     
@@ -152,16 +156,19 @@ def get_stocks_from_watchlists(db):
                         for watchlist_doc in watchlists:
                             data = watchlist_doc.to_dict()
                             if 'stocks' in data and isinstance(data['stocks'], list):
-                                all_symbols.update(data['stocks'])
+                                if user_id not in user_stocks_map:
+                                    user_stocks_map[user_id] = set()
+                                user_stocks_map[user_id].update(data['stocks'])
                                 watchlist_count += 1
                                 print(f"   → User {user_id[:8]}... has {len(data['stocks'])} stock(s) in watchlist '{watchlist_doc.id}'")
                     
-                    if all_symbols:
-                        print(f"\n   ✓ Found {user_count} user(s), {watchlist_count} watchlist(s) with {len(all_symbols)} unique stock(s)")
-                        return list(all_symbols), app_id
+                    total_stocks = sum(len(stocks) for stocks in user_stocks_map.values())
+                    if user_stocks_map:
+                        print(f"\n   ✓ Found {user_count} user(s), {watchlist_count} watchlist(s) with {total_stocks} stock assignments")
+                        return user_stocks_map, app_id
                     else:
                         print(f"\n   ℹ️  Found {user_count} user(s) but no stocks in any watchlists")
-                        return [], app_id
+                        return {}, app_id
                         
             except Exception as e:
                 print(f"   ⚠️  Direct path failed: {e}")
@@ -174,11 +181,11 @@ def get_stocks_from_watchlists(db):
             
             if users:
                 print(f"   ✓ Found {len(users)} user(s) at root level")
-                stocks = get_stocks_from_root_users(db, users)
-                return stocks, None  # None means root level, no app_id
+                user_stocks_map = get_stocks_from_root_users(db, users)
+                return user_stocks_map, None  # None means root level, no app_id
             else:
                 print("   ℹ️  No users found in Firebase")
-                return [], None
+                return {}, None
         
         # List all app IDs in artifacts
         print(f"\n   ✓ Found artifacts collection with {len(artifacts_docs)} app(s)")
@@ -207,9 +214,9 @@ def get_stocks_from_watchlists(db):
         
         if not users:
             print(f"   ℹ️  No users found in artifacts/{app_id}/users")
-            return [], app_id
+            return {}, app_id
         
-        all_symbols = set()
+        user_stocks_map = {}  # user_id -> set of stock symbols
         watchlist_count = 0
         user_count = 0
         
@@ -227,41 +234,44 @@ def get_stocks_from_watchlists(db):
             for watchlist_doc in watchlists:
                 data = watchlist_doc.to_dict()
                 if 'stocks' in data and isinstance(data['stocks'], list):
-                    all_symbols.update(data['stocks'])
+                    if user_id not in user_stocks_map:
+                        user_stocks_map[user_id] = set()
+                    user_stocks_map[user_id].update(data['stocks'])
                     watchlist_count += 1
                     print(f"   → User {user_id[:8]}... has {len(data['stocks'])} stock(s) in watchlist '{watchlist_doc.id}'")
         
-        if all_symbols:
-            print(f"\n   ✓ Found {user_count} user(s), {watchlist_count} watchlist(s) with {len(all_symbols)} unique stock(s)")
+        total_stocks = sum(len(stocks) for stocks in user_stocks_map.values())
+        if user_stocks_map:
+            print(f"\n   ✓ Found {user_count} user(s), {watchlist_count} watchlist(s) with {total_stocks} stock assignments")
         else:
             print(f"\n   ℹ️  Found {user_count} user(s) but no stocks in any watchlists")
         
-        # Return both stocks and app_id
-        return list(all_symbols), app_id
+        # Return both user_stocks_map and app_id
+        return user_stocks_map, app_id
     
     except Exception as e:
         print(f"⚠️  Error getting watchlist stocks: {e}")
         import traceback
         traceback.print_exc()
-        return [], None
+        return {}, None
 
-def update_stock_in_firebase(db, stock_data, app_id=None):
-    """Update or create a stock document in Firebase"""
+def update_stock_in_firebase(db, stock_data, user_id, app_id=None):
+    """Update or create a stock document in Firebase for a specific user"""
     try:
         symbol = stock_data['symbol']
         
         if app_id:
-            # Save to: artifacts/{app_id}/stocks/{symbol}
-            stock_ref = db.collection('artifacts').document(app_id).collection('stocks').document(symbol)
+            # Save to: artifacts/{app_id}/users/{user_id}/stocks/{symbol}
+            stock_ref = db.collection('artifacts').document(app_id).collection('users').document(user_id).collection('stocks').document(symbol)
         else:
-            # Save to root level: stocks/{symbol}
-            stock_ref = db.collection('stocks').document(symbol)
+            # Save to root level: users/{user_id}/stocks/{symbol}
+            stock_ref = db.collection('users').document(user_id).collection('stocks').document(symbol)
         
         stock_ref.set(stock_data, merge=True)
         return True
     
     except Exception as e:
-        print(f"⚠️  Error updating {stock_data['symbol']}: {e}")
+        print(f"⚠️  Error updating {stock_data['symbol']} for user {user_id[:8]}...: {e}")
         return False
 
 def update_indices_in_firebase(db, app_id=None):
@@ -318,43 +328,47 @@ def main():
     # Initialize Firebase
     db = initialize_firebase()
     
-    # Get all unique stock symbols from user watchlists only
+    # Get user-specific stock symbols from watchlists
     print("📊 Fetching stocks from user watchlists...\n")
     
-    # Only get stocks from watchlists (not from 'stocks' collection)
-    all_symbols, app_id = get_stocks_from_watchlists(db)
+    # Get mapping of user_id -> stock symbols
+    user_stocks_map, app_id = get_stocks_from_watchlists(db)
     
     if app_id:
-        print(f"\n💾 Using Firebase path: artifacts/{app_id}/")
+        print(f"\n💾 Using Firebase path: artifacts/{app_id}/users/{{userId}}/stocks/")
     else:
-        print("\n💾 Using root-level Firebase collections")
+        print("\n💾 Using root-level Firebase collections: users/{{userId}}/stocks/")
     
     # If no stocks found, skip stock updates
-    if not all_symbols:
+    if not user_stocks_map:
         print("\n⚠️  No stocks found in user watchlists!")
         print("   💡 Add stocks to your watchlist in the web app first.")
         print("   📊 Indices will still be updated.\n")
     else:
-        print(f"\n📈 Total {len(all_symbols)} unique stock(s) to update\n")
+        # Count total stock-user pairs
+        total_updates = sum(len(stocks) for stocks in user_stocks_map.values())
+        print(f"\n📈 Total {total_updates} stock update(s) across {len(user_stocks_map)} user(s)\n")
     
-    # Update each stock
+    # Update each stock for each user
     updated_count = 0
     failed_count = 0
     
-    for symbol in all_symbols:
-        print(f"Fetching {symbol}...", end=" ")
-        stock_data = fetch_stock_data(symbol)
-        
-        if stock_data:
-            if update_stock_in_firebase(db, stock_data, app_id):
-                print(f"✓ Updated (₹{stock_data['ltp']}, {stock_data['percent']:+.2f}%)")
-                updated_count += 1
+    for user_id, symbols in user_stocks_map.items():
+        print(f"\n👤 Updating stocks for user {user_id[:8]}...")
+        for symbol in symbols:
+            print(f"  Fetching {symbol}...", end=" ")
+            stock_data = fetch_stock_data(symbol)
+            
+            if stock_data:
+                if update_stock_in_firebase(db, stock_data, user_id, app_id):
+                    print(f"✓ Updated (₹{stock_data['ltp']}, {stock_data['percent']:+.2f}%)")
+                    updated_count += 1
+                else:
+                    print("✗ Failed to update Firebase")
+                    failed_count += 1
             else:
-                print("✗ Failed to update Firebase")
+                print("✗ Failed to fetch data")
                 failed_count += 1
-        else:
-            print("✗ Failed to fetch data")
-            failed_count += 1
     
     # Update indices
     print("\n📊 Updating market indices...")
