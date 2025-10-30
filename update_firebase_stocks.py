@@ -1,11 +1,7 @@
 #!/usr/bin/env python3
 """
 Update Firebase Firestore with real-time stock data from yfinance
-Runs via GitHub Actions every 15 minutes
-
-This script uses robust fallback logic to find user watchlists in two common paths:
-1. artifacts/{anyAppId}/users/{userId}/watchlists
-2. users/{userId}/watchlists (Root level fallback)
+Uses dynamic and default-app-id fallback logic.
 """
 import json
 import os
@@ -15,9 +11,10 @@ from datetime import datetime
 import firebase_admin
 from firebase_admin import credentials, firestore
 
-# ACTUAL_APP_ID को अब हम None पर सेट कर रहे हैं, ताकि कोड डायनामिक रूप से खोज सके
-# यदि डायनामिक खोज विफल होती है, तो यह 'default-app-id' पर फॉलबैक करेगा।
+# नए प्रोजेक्ट के लिए, हम इसे None पर सेट करते हैं ताकि कोड डायनामिक रूप से खोज सके
 ACTUAL_APP_ID = None 
+
+# --- (बाकी का सारा कोड वैसा ही रहेगा जैसा मैंने आपको अंतिम बार दिया था) ---
 
 def initialize_firebase():
     """Initialize Firebase Admin SDK"""
@@ -55,7 +52,6 @@ def fetch_stock_data(symbol):
         
         current_price = history['Close'].iloc[-1]
         
-        # Get previous trading day's close for more accurate change calculation
         previous_close = info.get('previousClose', current_price) 
         try:
             prev_close_history = stock.history(period="2d", interval="1d")
@@ -97,11 +93,9 @@ def process_found_users(db, users, app_id, base_collection_path):
     for user_doc in users:
         user_id = user_doc.id
         
-        # Determine the full path for watchlists (handles both root and artifacts structures)
         if base_collection_path == 'users':
              watchlists_ref = db.collection('users').document(user_id).collection('watchlists')
         else:
-            # Assumes base_collection_path is 'artifacts' and app_id is the document ID
             watchlists_ref = db.collection(base_collection_path).document(app_id).collection('users').document(user_id).collection('watchlists')
         
         watchlists = list(watchlists_ref.stream())
@@ -145,7 +139,6 @@ def get_stocks_from_watchlists(db):
                 
                 if users:
                     print(f" ✓ SUCCESS! Found {len(users)} user(s) at artifacts/{app_id}/users")
-                    # यदि यूज़र मिलते हैं, तो यहां से डेटा पढ़ें
                     return process_found_users(db, users, app_id, 'artifacts')
 
             print(" ℹ️  Found artifact IDs, but no users in any of them.")
@@ -155,10 +148,9 @@ def get_stocks_from_watchlists(db):
             
     except Exception as e:
         print(f" ⚠️  Error listing artifacts documents: {e}")
-        # traceback.print_exc() # GitHub Actions में अनावश्यक ट्रेसबैक से बचें
 
 
-    # 2. 'default-app-id' पर सीधे पहुँचने का प्रयास करें (अगर लिस्टिंग विफल हो गई या खाली थी)
+    # 2. 'default-app-id' पर सीधे पहुँचने का प्रयास करें 
     app_id_to_try = 'default-app-id'
     try:
         print(f" 🔧 Trying direct path fallback: artifacts/{app_id_to_try}/users...")
@@ -183,7 +175,6 @@ def get_stocks_from_watchlists(db):
     
     if users:
         print(f" ✓ Found {len(users)} user(s) at root level")
-        # रूट-लेवल यूज़र के लिए, app_id 'None' है और base_collection_path 'users' है
         return process_found_users(db, users, None, 'users')
     else:
         print(" ℹ️  No users found in Firebase")
@@ -226,7 +217,6 @@ def update_indices_in_firebase(db, app_id=None):
             if not history.empty:
                 current_price = history['Close'].iloc[-1]
                 
-                # Fetch previous close
                 previous_close = index.history(period="2d", interval="1d")['Close'].iloc[-2]
                 
                 change = current_price - previous_close
