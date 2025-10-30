@@ -47,13 +47,26 @@ def fetch_stock_data(symbol):
     try:
         stock = yf.Ticker(symbol)
         info = stock.info
-        history = stock.history(period="1d")
+        # yfinance history is the most reliable current-day data source
+        history = stock.history(period="1d") 
         
         if history.empty:
             return None
         
         current_price = history['Close'].iloc[-1]
-        previous_close = info.get('previousClose', current_price)
+        
+        # Try to get previousClose from info, else fallback to current price (safer than erroring)
+        previous_close = info.get('previousClose', current_price) 
+        
+        # Use previous trading day's close for more accurate change if possible
+        try:
+            prev_close_history = stock.history(period="2d", interval="1d")
+            if len(prev_close_history) > 1:
+                previous_close = prev_close_history['Close'].iloc[-2]
+        except Exception:
+             # Fallback if 2-day history fetch fails
+             pass
+
         change = current_price - previous_close
         percent_change = (change / previous_close) * 100 if previous_close else 0
         
@@ -99,7 +112,7 @@ def get_stocks_from_root_users(db, users):
                 user_stocks_map[user_id].update(data['stocks'])
                 watchlist_count += 1
                 print(f"   → User {user_id[:8]}... has {len(data['stocks'])} stock(s) in watchlist '{watchlist_doc.id}'")
-    
+        
     total_stocks = sum(len(stocks) for stocks in user_stocks_map.values())
     if user_stocks_map:
         print(f"\n   ✓ Found {user_count} user(s), {watchlist_count} watchlist(s) with {total_stocks} stock assignments")
@@ -110,150 +123,74 @@ def get_stocks_from_root_users(db, users):
 
 def get_stocks_from_watchlists(db):
     """Get all user-specific stock symbols from user watchlists"""
+    
+    # 1. artifacts/default-app-id/users पर सीधे पहुँचने का प्रयास करें (Fix for listing issue)
+    app_id_to_try = 'default-app-id'
+    
     try:
-        # First, let's see ALL collections at root level
-        print("   🔍 Checking Firebase structure...")
-        print("   📁 Listing all root-level collections...")
-        
-        collections = db.collections()
-        collection_names = []
-        for collection in collections:
-            collection_names.append(collection.id)
-            print(f"      → Found collection: '{collection.id}'")
-        
-        if not collection_names:
-            print("      ⚠️  No collections found at root level!")
-            print("      💡 Check Firebase security rules and service account permissions")
-            return {}, None
-        
-        # Now check if artifacts exists
-        artifacts_ref = db.collection('artifacts')
-        artifacts_docs = list(artifacts_ref.stream())
-        
-        if not artifacts_docs:
-            print("   ⚠️  'artifacts' collection exists but is empty or no documents accessible")
-            print("   💡 This is likely a security rules issue")
-            print("   🔧 Trying direct path: artifacts/default-app-id/users...")
-            
-            # Try accessing the known path directly even if we can't list it
-            try:
-                users_ref = db.collection('artifacts').document('default-app-id').collection('users')
-                users = list(users_ref.stream())
-                
-                if users:
-                    print(f"   ✓ SUCCESS! Found {len(users)} user(s) via direct path")
-                    app_id = 'default-app-id'
-                    
-                    user_stocks_map = {}  # user_id -> set of stock symbols
-                    watchlist_count = 0
-                    user_count = len(users)
-                    
-                    for user_doc in users:
-                        user_id = user_doc.id
-                        watchlists_ref = db.collection('artifacts').document(app_id).collection('users').document(user_id).collection('watchlists')
-                        watchlists = list(watchlists_ref.stream())
-                        
-                        for watchlist_doc in watchlists:
-                            data = watchlist_doc.to_dict()
-                            if 'stocks' in data and isinstance(data['stocks'], list):
-                                if user_id not in user_stocks_map:
-                                    user_stocks_map[user_id] = set()
-                                user_stocks_map[user_id].update(data['stocks'])
-                                watchlist_count += 1
-                                print(f"   → User {user_id[:8]}... has {len(data['stocks'])} stock(s) in watchlist '{watchlist_doc.id}'")
-                    
-                    total_stocks = sum(len(stocks) for stocks in user_stocks_map.values())
-                    if user_stocks_map:
-                        print(f"\n   ✓ Found {user_count} user(s), {watchlist_count} watchlist(s) with {total_stocks} stock assignments")
-                        return user_stocks_map, app_id
-                    else:
-                        print(f"\n   ℹ️  Found {user_count} user(s) but no stocks in any watchlists")
-                        return {}, app_id
-                        
-            except Exception as e:
-                print(f"   ⚠️  Direct path failed: {e}")
-            
-            print("   💡 Checking if data is at root level instead...")
-            
-            # Try root-level users collection
-            users_ref = db.collection('users')
-            users = list(users_ref.stream())
-            
-            if users:
-                print(f"   ✓ Found {len(users)} user(s) at root level")
-                user_stocks_map = get_stocks_from_root_users(db, users)
-                return user_stocks_map, None  # None means root level, no app_id
-            else:
-                print("   ℹ️  No users found in Firebase")
-                return {}, None
-        
-        # List all app IDs in artifacts
-        print(f"\n   ✓ Found artifacts collection with {len(artifacts_docs)} app(s)")
-        for app_doc in artifacts_docs:
-            print(f"      → App ID: '{app_doc.id}'")
-            
-            # List subcollections for this app
-            app_ref = db.collection('artifacts').document(app_doc.id)
-            subcollections = app_ref.collections()
-            subcolls = list(subcollections)
-            if subcolls:
-                for subcoll in subcolls:
-                    print(f"         └── Subcollection: '{subcoll.id}'")
-        
-        # Try to find the correct app ID (try default-app-id first, then others)
-        app_id = 'default-app-id'
-        users_ref = db.collection('artifacts').document(app_id).collection('users')
+        print(" 🔍 Checking Firebase structure...")
+        print(" 🎯 Trying direct path: artifacts/default-app-id/users...")
+
+        # सीधे users सबकलेक्शन को पढ़ें
+        users_ref = db.collection('artifacts').document(app_id_to_try).collection('users')
         users = list(users_ref.stream())
         
-        # If no users found with default-app-id, try the first app ID we found
-        if not users and artifacts_docs:
-            app_id = artifacts_docs[0].id
-            print(f"   🔄 Trying app ID: '{app_id}'")
-            users_ref = db.collection('artifacts').document(app_id).collection('users')
-            users = list(users_ref.stream())
-        
-        if not users:
-            print(f"   ℹ️  No users found in artifacts/{app_id}/users")
-            return {}, app_id
-        
-        user_stocks_map = {}  # user_id -> set of stock symbols
-        watchlist_count = 0
-        user_count = 0
-        
-        print(f"   ✓ Found {len(users)} user(s) in artifacts/{app_id}/users")
-        
-        # Iterate through all users
-        for user_doc in users:
-            user_id = user_doc.id
-            user_count += 1
+        if users:
+            print(f" ✓ SUCCESS! Found {len(users)} user(s) via direct path")
             
-            # Get watchlists for this user
-            watchlists_ref = db.collection('artifacts').document(app_id).collection('users').document(user_id).collection('watchlists')
-            watchlists = list(watchlists_ref.stream())
+            user_stocks_map = {}  # user_id -> set of stock symbols
+            watchlist_count = 0
+            user_count = len(users)
             
-            for watchlist_doc in watchlists:
-                data = watchlist_doc.to_dict()
-                if 'stocks' in data and isinstance(data['stocks'], list):
-                    if user_id not in user_stocks_map:
-                        user_stocks_map[user_id] = set()
-                    user_stocks_map[user_id].update(data['stocks'])
-                    watchlist_count += 1
-                    print(f"   → User {user_id[:8]}... has {len(data['stocks'])} stock(s) in watchlist '{watchlist_doc.id}'")
-        
-        total_stocks = sum(len(stocks) for stocks in user_stocks_map.values())
-        if user_stocks_map:
-            print(f"\n   ✓ Found {user_count} user(s), {watchlist_count} watchlist(s) with {total_stocks} stock assignments")
+            # Iterate through all users
+            for user_doc in users:
+                user_id = user_doc.id
+                
+                # Get watchlists for this user at the specific artifacts path
+                watchlists_ref = db.collection('artifacts').document(app_id_to_try).collection('users').document(user_id).collection('watchlists')
+                watchlists = list(watchlists_ref.stream())
+                
+                for watchlist_doc in watchlists:
+                    data = watchlist_doc.to_dict()
+                    if 'stocks' in data and isinstance(data['stocks'], list):
+                        if user_id not in user_stocks_map:
+                            user_stocks_map[user_id] = set()
+                        user_stocks_map[user_id].update(data['stocks'])
+                        watchlist_count += 1
+                        print(f"   → User {user_id[:8]}... has {len(data['stocks'])} stock(s) in watchlist '{watchlist_doc.id}'")
+            
+            # Summary return
+            total_stocks = sum(len(stocks) for stocks in user_stocks_map.values())
+            if user_stocks_map:
+                print(f"\n ✓ Found {user_count} user(s), {watchlist_count} watchlist(s) with {total_stocks} stock assignments")
+                return user_stocks_map, app_id_to_try
+            else:
+                print(f"\n ℹ️  Found {user_count} user(s) but no stocks in any watchlists")
+                return {}, app_id_to_try
+                
         else:
-            print(f"\n   ℹ️  Found {user_count} user(s) but no stocks in any watchlists")
-        
-        # Return both user_stocks_map and app_id
-        return user_stocks_map, app_id
-    
+             print(" ℹ️  Found no users at artifacts/default-app-id/users.")
+            
     except Exception as e:
-        print(f"⚠️  Error getting watchlist stocks: {e}")
+        print(f" ⚠️  Direct artifacts path failed: {e}")
         import traceback
         traceback.print_exc()
-        return {}, None
+
+
+    # 2. रूट लेवल फॉलबैक (Root Level Fallback)
+    print(" 💡 Checking if data is at root level instead...")
+    
+    # Try root-level users collection
+    users_ref = db.collection('users')
+    users = list(users_ref.stream())
+    
+    if users:
+        print(f" ✓ Found {len(users)} user(s) at root level")
+        user_stocks_map = get_stocks_from_root_users(db, users)
+        return user_stocks_map, None 
+    else:
+        print(" ℹ️  No users found in Firebase")
+        return {}, None 
 
 def update_stock_in_firebase(db, stock_data, user_id, app_id=None):
     """Update or create a stock document in Firebase for a specific user"""
@@ -291,7 +228,10 @@ def update_indices_in_firebase(db, app_id=None):
             
             if not history.empty:
                 current_price = history['Close'].iloc[-1]
-                previous_close = history['Open'].iloc[0]
+                
+                # Fetch previous close for accurate change calculation
+                previous_close = index.history(period="2d", interval="1d")['Close'].iloc[-2]
+                
                 change = current_price - previous_close
                 percent_change = (change / previous_close) * 100 if previous_close else 0
                 
@@ -342,8 +282,8 @@ def main():
     # If no stocks found, skip stock updates
     if not user_stocks_map:
         print("\n⚠️  No stocks found in user watchlists!")
-        print("   💡 Add stocks to your watchlist in the web app first.")
-        print("   📊 Indices will still be updated.\n")
+        print(" 💡 Add stocks to your watchlist in the web app first.")
+        print(" 📊 Indices will still be updated.\n")
     else:
         # Count total stock-user pairs
         total_updates = sum(len(stocks) for stocks in user_stocks_map.values())
@@ -356,7 +296,7 @@ def main():
     for user_id, symbols in user_stocks_map.items():
         print(f"\n👤 Updating stocks for user {user_id[:8]}...")
         for symbol in symbols:
-            print(f"  Fetching {symbol}...", end=" ")
+            print(f" Fetching {symbol}...", end=" ")
             stock_data = fetch_stock_data(symbol)
             
             if stock_data:
