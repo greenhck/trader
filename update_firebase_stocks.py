@@ -1,23 +1,21 @@
 #!/usr/bin/env python3
 """
 Update Firebase Firestore with real-time stock data from yfinance
-Uses dynamic and default-app-id fallback logic.
+*** Now using google.cloud.firestore for better access ***
 """
 import json
 import os
 import sys
 import yfinance as yf
 from datetime import datetime
-import firebase_admin
-from firebase_admin import credentials, firestore
+# यहाँ हमने firebase_admin को google.cloud.firestore से बदल दिया है
+from google.cloud import firestore
 
-# नए प्रोजेक्ट के लिए, हम इसे None पर सेट करते हैं ताकि कोड डायनामिक रूप से खोज सके
+# चूंकि आपका डेटाबेस पाथ अब निश्चित है
 ACTUAL_APP_ID = 'default-app-id' 
 
-# --- (बाकी का सारा कोड वैसा ही रहेगा जैसा मैंने आपको अंतिम बार दिया था) ---
-
-def initialize_firebase():
-    """Initialize Firebase Admin SDK"""
+def initialize_firestore_client():
+    """Initialize Google Cloud Firestore Client using SERVICE_ACCOUNT JSON"""
     try:
         # Get Firebase credentials from environment variable
         cred_json = os.environ.get('FIREBASE_SERVICE_ACCOUNT')
@@ -25,23 +23,33 @@ def initialize_firebase():
             print("❌ Error: FIREBASE_SERVICE_ACCOUNT environment variable not found")
             sys.exit(1)
         
-        # Parse credentials
+        # Load credentials to set the project ID and authenticate
         cred_dict = json.loads(cred_json)
-        cred = credentials.Certificate(cred_dict)
         
-        # Initialize Firebase app
-        firebase_admin.initialize_app(cred)
-        db = firestore.client()
+        # Google Cloud Client Library के लिए, हम सीधे क्रेडेंशियल्स का उपयोग करते हैं
+        # 'google-cloud-firestore' लाइब्रेरी स्वचालित रूप से ENVIRONMENT VARIABLE से क्रेडेंशियल्स पढ़ लेती है
+        # या हम इसे सीधे JSON फ़ाइल से भी लोड कर सकते हैं।
+        # सबसे आसान तरीका है कि हम JSON को एक अस्थायी फ़ाइल में सेव करें और GOOGLE_APPLICATION_CREDENTIALS सेट करें।
         
-        print("✓ Firebase initialized successfully")
+        # GitHub Actions में GOOGLE_APPLICATION_CREDENTIALS सेट करने के लिए:
+        # अगर आप GitHub Actions YAML में यह जोड़ दें तो यह हिस्सा स्वचालित रूप से काम करेगा:
+        # - uses: 'google-github-actions/auth@v2' 
+        #   with:
+        #     credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        
+        # यदि आप YAML में बदलाव नहीं कर सकते हैं, तो हम इसे मैन्युअल रूप से लोड करेंगे:
+        db = firestore.Client.from_service_account_info(cred_dict)
+        
+        print("✓ Google Cloud Firestore Client initialized successfully")
         return db
     
     except Exception as e:
-        print(f"❌ Error initializing Firebase: {e}")
+        print(f"❌ Error initializing Firestore Client: {e}")
         sys.exit(1)
 
 def fetch_stock_data(symbol):
     """Fetch real-time data for a single stock"""
+    # ... (यह फ़ंक्शन वैसा ही रहेगा)
     try:
         stock = yf.Ticker(symbol)
         info = stock.info
@@ -84,6 +92,8 @@ def fetch_stock_data(symbol):
         print(f"⚠️  Error fetching {symbol}: {e}")
         return None
 
+# --- process_found_users और get_stocks_from_root_users (यदि आवश्यकता हो) ---
+
 def process_found_users(db, users, app_id, base_collection_path):
     """Helper function to process watchlists once users are found."""
     user_stocks_map = {}
@@ -91,14 +101,16 @@ def process_found_users(db, users, app_id, base_collection_path):
     user_count = len(users)
 
     for user_doc in users:
-        user_id = user_doc.id
+        # Google Cloud Client Library में, document ID 'id' एट्रिब्यूट में होता है
+        user_id = user_doc.id 
         
         if base_collection_path == 'users':
              watchlists_ref = db.collection('users').document(user_id).collection('watchlists')
         else:
             watchlists_ref = db.collection(base_collection_path).document(app_id).collection('users').document(user_id).collection('watchlists')
         
-        watchlists = list(watchlists_ref.stream())
+        # Google Cloud Client Library में, .stream() एक Iterator लौटाता है
+        watchlists = list(watchlists_ref.stream()) 
         
         for watchlist_doc in watchlists:
             data = watchlist_doc.to_dict()
@@ -117,57 +129,33 @@ def process_found_users(db, users, app_id, base_collection_path):
         print(f"\n ℹ️  Found {user_count} user(s) but no stocks in any watchlists")
         return {}, app_id
 
+
 def get_stocks_from_watchlists(db):
     """Get all user-specific stock symbols from user watchlists"""
     
-    # 1. डायनामिक रूप से 'artifacts' कलेक्शन में App IDs (डॉक्यूमेंट्स) खोजें
+    app_id_to_try = ACTUAL_APP_ID # 'default-app-id'
+    
+    # 1. 'default-app-id' पर सीधे पहुँचने का प्रयास करें
     try:
         print(" 🔍 Checking Firebase structure...")
-        artifacts_ref = db.collection('artifacts')
-        artifacts_docs = list(artifacts_ref.stream())
-        
-        if artifacts_docs:
-            print(f" ✓ Found artifacts collection with {len(artifacts_docs)} app(s) accessible.")
-            
-            # हर App ID (डॉक्यूमेंट) को आज़माएँ
-            for artifact_doc in artifacts_docs:
-                app_id = artifact_doc.id
-                print(f" 🎯 Trying artifact ID: {app_id}/users...")
-                
-                users_ref = db.collection('artifacts').document(app_id).collection('users')
-                users = list(users_ref.stream())
-                
-                if users:
-                    print(f" ✓ SUCCESS! Found {len(users)} user(s) at artifacts/{app_id}/users")
-                    return process_found_users(db, users, app_id, 'artifacts')
+        print(f" 🎯 Trying direct path: artifacts/{app_id_to_try}/users...")
 
-            print(" ℹ️  Found artifact IDs, but no users in any of them.")
-
-        else:
-            print(" ⚠️  'artifacts' collection exists but is empty or no documents accessible")
-            
-    except Exception as e:
-        print(f" ⚠️  Error listing artifacts documents: {e}")
-
-
-    # 2. 'default-app-id' पर सीधे पहुँचने का प्रयास करें 
-    app_id_to_try = 'default-app-id'
-    try:
-        print(f" 🔧 Trying direct path fallback: artifacts/{app_id_to_try}/users...")
         users_ref = db.collection('artifacts').document(app_id_to_try).collection('users')
-        users = list(users_ref.stream())
+        # Google Cloud Client Library में .stream() का उपयोग करें
+        users = list(users_ref.stream()) 
         
         if users:
-            print(f" ✓ SUCCESS! Found {len(users)} user(s) via direct fallback path")
+            print(f" ✓ SUCCESS! Found {len(users)} user(s) at artifacts/{app_id_to_try}/users")
             return process_found_users(db, users, app_id_to_try, 'artifacts')
         else:
-             print(f" ℹ️  Found no users at artifacts/{app_id_to_try}/users.")
+            # यह लॉग अब अधिक विश्वसनीय है, क्योंकि हमने IAM और Client Library को बदला है
+            print(f" ℹ️  Found no users at artifacts/{app_id_to_try}/users.")
             
     except Exception as e:
-        print(f" ⚠️  Direct fallback path failed: {e}")
+        print(f" ⚠️  Direct artifacts path failed: {e}")
+        # traceback.print_exc()
 
-
-    # 3. रूट लेवल फॉलबैक (Root Level Fallback)
+    # 2. रूट लेवल फॉलबैक (Root Level Fallback)
     print(" 💡 Checking if data is at root level instead...")
     
     users_ref = db.collection('users')
@@ -180,8 +168,12 @@ def get_stocks_from_watchlists(db):
         print(" ℹ️  No users found in Firebase")
         return {}, None 
 
+# --- update_stock_in_firebase और update_indices_in_firebase (वैसे ही रहेंगे, 
+# बस उन्हें db के साथ काम करने के लिए google.cloud.firestore ऑब्जेक्ट की आवश्यकता होगी) ---
+
 def update_stock_in_firebase(db, stock_data, user_id, app_id=None):
     """Update or create a stock document in Firebase for a specific user"""
+    # ... (यह फ़ंक्शन वैसा ही रहेगा)
     try:
         symbol = stock_data['symbol']
         
@@ -192,6 +184,7 @@ def update_stock_in_firebase(db, stock_data, user_id, app_id=None):
             # Save to root level: users/{user_id}/stocks/{symbol}
             stock_ref = db.collection('users').document(user_id).collection('stocks').document(symbol)
         
+        # set() method दोनों लाइब्रेरीज़ में समान काम करता है
         stock_ref.set(stock_data, merge=True)
         return True
     
@@ -201,6 +194,7 @@ def update_stock_in_firebase(db, stock_data, user_id, app_id=None):
 
 def update_indices_in_firebase(db, app_id=None):
     """Update major Indian market indices"""
+    # ... (यह फ़ंक्शन वैसा ही रहेगा)
     indices_symbols = {
         'NIFTY 50': '^NSEI',
         'NIFTY BANK': '^NSEBANK',
@@ -232,10 +226,8 @@ def update_indices_in_firebase(db, app_id=None):
                 }
                 
                 if app_id:
-                    # Store in: artifacts/{app_id}/indices/{symbol}
                     index_ref = db.collection('artifacts').document(app_id).collection('indices').document(symbol)
                 else:
-                    # Store at root level: indices/{symbol}
                     index_ref = db.collection('indices').document(symbol)
                 
                 index_ref.set(index_data, merge=True)
@@ -252,8 +244,8 @@ def main():
     print("🔄 Starting Firebase Stock Data Update")
     print("="*60 + "\n")
     
-    # Initialize Firebase
-    db = initialize_firebase()
+    # Initialize Firestore Client
+    db = initialize_firestore_client()
     
     # Get user-specific stock symbols from watchlists
     print("📊 Fetching stocks from user watchlists...\n")
