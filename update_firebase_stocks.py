@@ -4,7 +4,7 @@ Update Firebase Firestore with real-time stock data from yfinance
 Runs via GitHub Actions every 15 minutes
 
 Firebase Structure:
-  artifacts/default-app-id/
+  artifacts/{App ID}/
     ├── users/{userId}/
     │   ├── watchlists/{watchlistId} - User watchlists (READ from here)
     │   └── stocks/{symbol} - User-specific stock data (WRITE here)
@@ -17,6 +17,10 @@ import yfinance as yf
 from datetime import datetime
 import firebase_admin
 from firebase_admin import credentials, firestore
+
+# ⭐ कॉन्फ़िगरेशन: आपके Firestore कंसोल से लिया गया वास्तविक App ID
+# Real App ID taken from your Firebase console image
+ACTUAL_APP_ID = '2fID46T0zvezchS33YstsgDPxFgHf1' 
 
 def initialize_firebase():
     """Initialize Firebase Admin SDK"""
@@ -47,7 +51,6 @@ def fetch_stock_data(symbol):
     try:
         stock = yf.Ticker(symbol)
         info = stock.info
-        # yfinance history is the most reliable current-day data source
         history = stock.history(period="1d") 
         
         if history.empty:
@@ -55,16 +58,13 @@ def fetch_stock_data(symbol):
         
         current_price = history['Close'].iloc[-1]
         
-        # Try to get previousClose from info, else fallback to current price (safer than erroring)
+        # Get previous trading day's close for more accurate change calculation
         previous_close = info.get('previousClose', current_price) 
-        
-        # Use previous trading day's close for more accurate change if possible
         try:
             prev_close_history = stock.history(period="2d", interval="1d")
             if len(prev_close_history) > 1:
                 previous_close = prev_close_history['Close'].iloc[-2]
         except Exception:
-             # Fallback if 2-day history fetch fails
              pass
 
         change = current_price - previous_close
@@ -93,14 +93,13 @@ def fetch_stock_data(symbol):
 
 def get_stocks_from_root_users(db, users):
     """Get stocks from root-level users collection (alternative structure)"""
-    user_stocks_map = {}  # user_id -> set of stock symbols
+    user_stocks_map = {}
     watchlist_count = 0
     user_count = len(users)
     
     for user_doc in users:
         user_id = user_doc.id
         
-        # Get watchlists for this user at root level
         watchlists_ref = db.collection('users').document(user_id).collection('watchlists')
         watchlists = list(watchlists_ref.stream())
         
@@ -124,12 +123,12 @@ def get_stocks_from_root_users(db, users):
 def get_stocks_from_watchlists(db):
     """Get all user-specific stock symbols from user watchlists"""
     
-    # 1. artifacts/default-app-id/users पर सीधे पहुँचने का प्रयास करें (Fix for listing issue)
-    app_id_to_try = 'default-app-id'
+    # 1. artifacts/{ACTUAL_APP_ID}/users पर सीधे पहुँचने का प्रयास करें
+    app_id_to_try = ACTUAL_APP_ID # ⭐ यहाँ हमने सही ID का उपयोग किया है
     
     try:
         print(" 🔍 Checking Firebase structure...")
-        print(" 🎯 Trying direct path: artifacts/default-app-id/users...")
+        print(f" 🎯 Trying direct path: artifacts/{app_id_to_try}/users...")
 
         # सीधे users सबकलेक्शन को पढ़ें
         users_ref = db.collection('artifacts').document(app_id_to_try).collection('users')
@@ -138,7 +137,7 @@ def get_stocks_from_watchlists(db):
         if users:
             print(f" ✓ SUCCESS! Found {len(users)} user(s) via direct path")
             
-            user_stocks_map = {}  # user_id -> set of stock symbols
+            user_stocks_map = {}
             watchlist_count = 0
             user_count = len(users)
             
@@ -169,7 +168,7 @@ def get_stocks_from_watchlists(db):
                 return {}, app_id_to_try
                 
         else:
-             print(" ℹ️  Found no users at artifacts/default-app-id/users.")
+             print(f" ℹ️  Found no users at artifacts/{app_id_to_try}/users. Checking other structures.")
             
     except Exception as e:
         print(f" ⚠️  Direct artifacts path failed: {e}")
@@ -229,7 +228,7 @@ def update_indices_in_firebase(db, app_id=None):
             if not history.empty:
                 current_price = history['Close'].iloc[-1]
                 
-                # Fetch previous close for accurate change calculation
+                # Fetch previous close
                 previous_close = index.history(period="2d", interval="1d")['Close'].iloc[-2]
                 
                 change = current_price - previous_close
