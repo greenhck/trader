@@ -20,7 +20,7 @@ from firebase_admin import credentials, firestore
 
 # ⭐ कॉन्फ़िगरेशन: आपके Firestore कंसोल से लिया गया वास्तविक App ID
 # Real App ID taken from your Firebase console image
-ACTUAL_APP_ID = '2fID46T0zvezchS33YstsgDPxFgHf1' 
+ACTUAL_APP_ID = 'default-app-id' 
 
 def initialize_firebase():
     """Initialize Firebase Admin SDK"""
