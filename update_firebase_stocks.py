@@ -3,12 +3,9 @@
 Update Firebase Firestore with real-time stock data from yfinance
 Runs via GitHub Actions every 15 minutes
 
-Firebase Structure:
-  artifacts/{App ID}/
-    ├── users/{userId}/
-    │   ├── watchlists/{watchlistId} - User watchlists (READ from here)
-    │   └── stocks/{symbol} - User-specific stock data (WRITE here)
-    └── indices/{symbol} - Market indices (WRITE here)
+This script uses robust fallback logic to find user watchlists in two common paths:
+1. artifacts/{anyAppId}/users/{userId}/watchlists
+2. users/{userId}/watchlists (Root level fallback)
 """
 import json
 import os
@@ -18,9 +15,9 @@ from datetime import datetime
 import firebase_admin
 from firebase_admin import credentials, firestore
 
-# ⭐ कॉन्फ़िगरेशन: आपके Firestore कंसोल से लिया गया वास्तविक App ID
-# Real App ID taken from your Firebase console image
-ACTUAL_APP_ID = 'default-app-id' 
+# ACTUAL_APP_ID को अब हम None पर सेट कर रहे हैं, ताकि कोड डायनामिक रूप से खोज सके
+# यदि डायनामिक खोज विफल होती है, तो यह 'default-app-id' पर फॉलबैक करेगा।
+ACTUAL_APP_ID = None 
 
 def initialize_firebase():
     """Initialize Firebase Admin SDK"""
@@ -91,16 +88,22 @@ def fetch_stock_data(symbol):
         print(f"⚠️  Error fetching {symbol}: {e}")
         return None
 
-def get_stocks_from_root_users(db, users):
-    """Get stocks from root-level users collection (alternative structure)"""
+def process_found_users(db, users, app_id, base_collection_path):
+    """Helper function to process watchlists once users are found."""
     user_stocks_map = {}
     watchlist_count = 0
     user_count = len(users)
-    
+
     for user_doc in users:
         user_id = user_doc.id
         
-        watchlists_ref = db.collection('users').document(user_id).collection('watchlists')
+        # Determine the full path for watchlists (handles both root and artifacts structures)
+        if base_collection_path == 'users':
+             watchlists_ref = db.collection('users').document(user_id).collection('watchlists')
+        else:
+            # Assumes base_collection_path is 'artifacts' and app_id is the document ID
+            watchlists_ref = db.collection(base_collection_path).document(app_id).collection('users').document(user_id).collection('watchlists')
+        
         watchlists = list(watchlists_ref.stream())
         
         for watchlist_doc in watchlists:
@@ -114,79 +117,74 @@ def get_stocks_from_root_users(db, users):
         
     total_stocks = sum(len(stocks) for stocks in user_stocks_map.values())
     if user_stocks_map:
-        print(f"\n   ✓ Found {user_count} user(s), {watchlist_count} watchlist(s) with {total_stocks} stock assignments")
+        print(f"\n ✓ Found {user_count} user(s), {watchlist_count} watchlist(s) with {total_stocks} stock assignments")
+        return user_stocks_map, app_id
     else:
-        print(f"\n   ℹ️  Found {user_count} user(s) but no stocks in any watchlists")
-    
-    return user_stocks_map
+        print(f"\n ℹ️  Found {user_count} user(s) but no stocks in any watchlists")
+        return {}, app_id
 
 def get_stocks_from_watchlists(db):
     """Get all user-specific stock symbols from user watchlists"""
     
-    # 1. artifacts/{ACTUAL_APP_ID}/users पर सीधे पहुँचने का प्रयास करें
-    app_id_to_try = ACTUAL_APP_ID # ⭐ यहाँ हमने सही ID का उपयोग किया है
-    
+    # 1. डायनामिक रूप से 'artifacts' कलेक्शन में App IDs (डॉक्यूमेंट्स) खोजें
     try:
         print(" 🔍 Checking Firebase structure...")
-        print(f" 🎯 Trying direct path: artifacts/{app_id_to_try}/users...")
+        artifacts_ref = db.collection('artifacts')
+        artifacts_docs = list(artifacts_ref.stream())
+        
+        if artifacts_docs:
+            print(f" ✓ Found artifacts collection with {len(artifacts_docs)} app(s) accessible.")
+            
+            # हर App ID (डॉक्यूमेंट) को आज़माएँ
+            for artifact_doc in artifacts_docs:
+                app_id = artifact_doc.id
+                print(f" 🎯 Trying artifact ID: {app_id}/users...")
+                
+                users_ref = db.collection('artifacts').document(app_id).collection('users')
+                users = list(users_ref.stream())
+                
+                if users:
+                    print(f" ✓ SUCCESS! Found {len(users)} user(s) at artifacts/{app_id}/users")
+                    # यदि यूज़र मिलते हैं, तो यहां से डेटा पढ़ें
+                    return process_found_users(db, users, app_id, 'artifacts')
 
-        # सीधे users सबकलेक्शन को पढ़ें
+            print(" ℹ️  Found artifact IDs, but no users in any of them.")
+
+        else:
+            print(" ⚠️  'artifacts' collection exists but is empty or no documents accessible")
+            
+    except Exception as e:
+        print(f" ⚠️  Error listing artifacts documents: {e}")
+        # traceback.print_exc() # GitHub Actions में अनावश्यक ट्रेसबैक से बचें
+
+
+    # 2. 'default-app-id' पर सीधे पहुँचने का प्रयास करें (अगर लिस्टिंग विफल हो गई या खाली थी)
+    app_id_to_try = 'default-app-id'
+    try:
+        print(f" 🔧 Trying direct path fallback: artifacts/{app_id_to_try}/users...")
         users_ref = db.collection('artifacts').document(app_id_to_try).collection('users')
         users = list(users_ref.stream())
         
         if users:
-            print(f" ✓ SUCCESS! Found {len(users)} user(s) via direct path")
-            
-            user_stocks_map = {}
-            watchlist_count = 0
-            user_count = len(users)
-            
-            # Iterate through all users
-            for user_doc in users:
-                user_id = user_doc.id
-                
-                # Get watchlists for this user at the specific artifacts path
-                watchlists_ref = db.collection('artifacts').document(app_id_to_try).collection('users').document(user_id).collection('watchlists')
-                watchlists = list(watchlists_ref.stream())
-                
-                for watchlist_doc in watchlists:
-                    data = watchlist_doc.to_dict()
-                    if 'stocks' in data and isinstance(data['stocks'], list):
-                        if user_id not in user_stocks_map:
-                            user_stocks_map[user_id] = set()
-                        user_stocks_map[user_id].update(data['stocks'])
-                        watchlist_count += 1
-                        print(f"   → User {user_id[:8]}... has {len(data['stocks'])} stock(s) in watchlist '{watchlist_doc.id}'")
-            
-            # Summary return
-            total_stocks = sum(len(stocks) for stocks in user_stocks_map.values())
-            if user_stocks_map:
-                print(f"\n ✓ Found {user_count} user(s), {watchlist_count} watchlist(s) with {total_stocks} stock assignments")
-                return user_stocks_map, app_id_to_try
-            else:
-                print(f"\n ℹ️  Found {user_count} user(s) but no stocks in any watchlists")
-                return {}, app_id_to_try
-                
+            print(f" ✓ SUCCESS! Found {len(users)} user(s) via direct fallback path")
+            return process_found_users(db, users, app_id_to_try, 'artifacts')
         else:
-             print(f" ℹ️  Found no users at artifacts/{app_id_to_try}/users. Checking other structures.")
+             print(f" ℹ️  Found no users at artifacts/{app_id_to_try}/users.")
             
     except Exception as e:
-        print(f" ⚠️  Direct artifacts path failed: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f" ⚠️  Direct fallback path failed: {e}")
 
 
-    # 2. रूट लेवल फॉलबैक (Root Level Fallback)
+    # 3. रूट लेवल फॉलबैक (Root Level Fallback)
     print(" 💡 Checking if data is at root level instead...")
     
-    # Try root-level users collection
     users_ref = db.collection('users')
     users = list(users_ref.stream())
     
     if users:
         print(f" ✓ Found {len(users)} user(s) at root level")
-        user_stocks_map = get_stocks_from_root_users(db, users)
-        return user_stocks_map, None 
+        # रूट-लेवल यूज़र के लिए, app_id 'None' है और base_collection_path 'users' है
+        return process_found_users(db, users, None, 'users')
     else:
         print(" ℹ️  No users found in Firebase")
         return {}, None 
