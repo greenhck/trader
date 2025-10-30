@@ -28,6 +28,6 @@ jobs:
       
       - name: Update Firebase with stock data
         run: |
-          python update_firebase_stocks.py
+          python main.py
         env:
-          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.GCP_SHEETS_SERVICE_ACCOUNT }}
