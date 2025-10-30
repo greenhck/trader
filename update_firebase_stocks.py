@@ -12,7 +12,7 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 
 # नए प्रोजेक्ट के लिए, हम इसे None पर सेट करते हैं ताकि कोड डायनामिक रूप से खोज सके
-ACTUAL_APP_ID = None 
+ACTUAL_APP_ID = 'default-app-id' 
 
 # --- (बाकी का सारा कोड वैसा ही रहेगा जैसा मैंने आपको अंतिम बार दिया था) ---
 
