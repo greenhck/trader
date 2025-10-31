@@ -119,7 +119,7 @@ def update_data_in_sheets(gc, all_stock_data):
 
         # पुराने डेटा को साफ़ करें और नया डेटा लिखें
         worksheet.clear()
-        worksheet.update('A1', data_rows) 
+        worksheet.update(range_name='A1', values=data_rows)
         
         print(f"\n✓ Successfully updated {len(all_stock_data)} stock prices in Google Sheet '{LIVE_DATA_TAB_NAME}'.")
         return True
