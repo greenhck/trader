@@ -340,7 +340,7 @@
     let userId = null;
     
     // API Configuration - Change this to your deployed API URL
-    const API_URL = 'http://localhost:5000';  // Update with your deployed API URL
+    const API_URL = 'https://script.google.com/macros/s/AKfycbwsqHw7wkDm_Fk365xxSOZOt8AaMm6aX_ewGzVl_Ee3YlgP0_KLNMjE6fNFAafkvsq-/exec';  // Update with your deployed API URL
     
     // Cache for stock data fetched from API
     let stockDataCache = {};
@@ -867,25 +867,14 @@
             return;
         }
 
-        const holdingsRef = doc(db, getCollectionPath('holdings'), 'my_holdings');
-
-        const batch = writeBatch(db);
-
-        // Prepare the new holdings map
-        const updatedHoldings = { ...portfolioHoldings };
-        if (newHolding === 0) {
-            delete updatedHoldings[stockId];
-        } else {
-            updatedHoldings[stockId] = newHolding;
-        }
-
         try {
-             // Use setDoc with merge: true to update the document, creating it if it doesn't exist.
-            batch.set(holdingsRef, { stocks: updatedHoldings }, { merge: true });
-            await batch.commit();
+            await saveToSheets('updateHoldings', {
+                stockId: stockId,
+                quantity: newHolding
+            });
 
             closeStockDetailSheet();
-            // Real-time listener will re-render stock list automatically
+            // Polling will refresh the UI automatically
         } catch (error) {
             console.error("Error updating holdings:", error);
         }
@@ -943,7 +932,7 @@
         document.getElementById('stock-list-container').scrollLeft = index * document.getElementById('stock-list-container').offsetWidth;
     };
 
-    window.handleEditWatchlistName = (e, id) => {
+    window.handleEditWatchlistName = async (e, id) => {
         e.preventDefault(); // Prevent context menu on long press
         if (!userId) return;
 
@@ -953,12 +942,12 @@
         // Use a simple prompt for now, or you could implement a custom modal
         const newName = prompt(`Enter new name for: ${list.name}`);
         if (newName && newName.trim() && newName.trim() !== list.name) {
-            const listRef = doc(db, getCollectionPath('watchlists'), id);
-            updateDoc(listRef, { name: newName.trim() })
-                .then(() => console.log("Watchlist name updated."))
-                .catch(error => console.error("Error updating watchlist name:", error));
-
-            // Listener will re-render tabs automatically
+            await saveToSheets('saveWatchlist', {
+                watchlistId: id,
+                name: newName.trim(),
+                stocks: list.stocks,
+                order: list.order
+            });
         }
     };
 
@@ -968,18 +957,22 @@
         const name = prompt("Enter new watchlist name:");
         if (name && name.trim()) {
             try {
-                const listRef = collection(db, getCollectionPath('watchlists'));
-                await addDoc(listRef, {
+                await saveToSheets('saveWatchlist', {
+                    watchlistId: generateId(),
                     name: name.trim(),
                     stocks: [],
                     order: allWatchlists.length
-                 });
-                // Listener will add the new tab automatically
+                });
             } catch (e) {
                 console.error("Error adding new watchlist:", e);
             }
         }
     };
+    
+    // Helper function to generate IDs
+    function generateId() {
+        return 'id_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    }
 
     // 6. Search Functionality (Now a Fullscreen Fade Modal - Fixed as requested)
     window.openSearch = () => {
@@ -1196,8 +1189,12 @@
         const newStocks = list.stocks.filter(id => id !== stockId);
 
         try {
-            const listRef = doc(db, getCollectionPath('watchlists'), watchlistId);
-            await updateDoc(listRef, { stocks: newStocks });
+            await saveToSheets('saveWatchlist', {
+                watchlistId: watchlistId,
+                name: list.name,
+                stocks: newStocks,
+                order: list.order
+            });
             console.log(`Removed ${stockId} from ${watchlistId}`);
         } catch (error) {
             console.error("Error removing stock from watchlist:", error);
@@ -1501,3 +1498,5 @@
     });
 
 </script>
+
+    
